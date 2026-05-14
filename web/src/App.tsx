@@ -3,6 +3,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout } from '@/components/Layout';
 import { Welcome } from '@/pages/Welcome';
 import { Overview } from '@/pages/Overview';
+import { Wizard } from '@/pages/Wizard';
 import {
   InboxPage,
   ContactsPage,
@@ -28,6 +29,8 @@ export function App() {
         ) : (
           <>
             <Route path="/welcome" element={<Navigate to="/" replace />} />
+            {/* Onboarding wizard — full-screen, outside the dashboard shell */}
+            <Route path="/setup" element={<Wizard />} />
             <Route element={<Layout />}>
               <Route path="/" element={<Overview />} />
               <Route path="/inbox" element={<InboxPage />} />

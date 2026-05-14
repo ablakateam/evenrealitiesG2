@@ -32,7 +32,7 @@ composeRouter.post('/api/stt', requireAuth, upload.single('audio'), async (req, 
   const isRawPcm = req.body?.is_raw_pcm !== 'false'; // default true
   const language = typeof req.body?.language === 'string' && req.body.language ? req.body.language : undefined;
   try {
-    const result = await transcribe({ audio: req.file.buffer, isRawPcm, language });
+    const result = await transcribe(req.user!.id, { audio: req.file.buffer, isRawPcm, language });
     res.json(result);
   } catch (err) {
     handleErr(err, res);
@@ -150,7 +150,7 @@ composeRouter.post('/api/rewrite', requireAuth, async (req, res) => {
     const prefs = getDb()
       .prepare('SELECT rewrite_provider, rewrite_model FROM preferences WHERE user_id = ?')
       .get(req.user!.id) as { rewrite_provider: string; rewrite_model: string };
-    const provider = createProvider(prefs.rewrite_provider as 'anthropic' | 'openai' | 'openrouter' | 'ollama-cloud');
+    const provider = createProvider(prefs.rewrite_provider as 'anthropic' | 'openai' | 'openrouter' | 'ollama-cloud', req.user!.id);
     const result = await provider.complete({
       systemPrompt: buildRewriteSystemPrompt({
         tone: parsed.data.tone,

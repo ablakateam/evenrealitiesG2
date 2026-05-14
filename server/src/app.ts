@@ -13,6 +13,7 @@ import { inboxRouter } from './routes/inbox.js';
 import { contactsRouter } from './routes/contacts.js';
 import { templatesRouter } from './routes/templates.js';
 import { historyRouter } from './routes/history.js';
+import { integrationsRouter } from './routes/integrations.js';
 
 export function buildApp(): Express {
   const app = express();
@@ -42,6 +43,7 @@ export function buildApp(): Express {
   app.use(contactsRouter);
   app.use(templatesRouter);
   app.use(historyRouter);
+  app.use(integrationsRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'not_found' });

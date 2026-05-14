@@ -73,11 +73,11 @@ describe('Model validation', () => {
 });
 
 describe('Provider factory', () => {
-  it('throws missing_credentials when ANTHROPIC_KEY is unset', () => {
+  it('throws missing_credentials when no key in DB or env', () => {
     delete process.env.ANTHROPIC_KEY;
-    expect(() => createProvider('anthropic')).toThrow(LlmError);
+    expect(() => createProvider('anthropic', 1)).toThrow(LlmError);
     try {
-      createProvider('anthropic');
+      createProvider('anthropic', 1);
     } catch (err) {
       expect(err).toBeInstanceOf(LlmError);
       const e = err as LlmError;
@@ -86,9 +86,18 @@ describe('Provider factory', () => {
     }
   });
 
-  it('throws missing_credentials when OPENAI_KEY is unset', () => {
+  it('throws missing_credentials for openai when unconfigured', () => {
     delete process.env.OPENAI_KEY;
-    expect(() => createProvider('openai')).toThrow(LlmError);
+    expect(() => createProvider('openai', 1)).toThrow(LlmError);
+  });
+
+  it('resolves a provider once credentials are stored in the DB', async () => {
+    const { setIntegration } = await import('../src/integrations.js');
+    setIntegration(1, 'anthropic', { api_key: 'sk-ant-test-key-1234567890' });
+    const provider = createProvider('anthropic', 1);
+    expect(provider.name).toBe('anthropic');
+    const { deleteIntegration } = await import('../src/integrations.js');
+    deleteIntegration(1, 'anthropic');
   });
 });
 

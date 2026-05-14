@@ -1,12 +1,11 @@
 import twilio from 'twilio';
-import { env } from '../env.js';
+import { getIntegrationCreds, type TwilioCreds } from '../integrations.js';
 
 /**
- * Lazy Twilio client. Throws SmsError("missing_credentials") if SID/TOKEN
- * are not configured.
+ * Twilio client. Credentials resolve DB-first (the `integrations` table,
+ * written by the onboarding wizard) with env-var fallback (the bootstrap
+ * path — what /opt/vox/.env provides on a fresh deploy).
  */
-let cachedClient: ReturnType<typeof twilio> | null = null;
-
 export class SmsError extends Error {
   constructor(
     public readonly code: string,
@@ -19,13 +18,19 @@ export class SmsError extends Error {
   }
 }
 
-function getClient(): ReturnType<typeof twilio> {
-  if (cachedClient) return cachedClient;
-  if (!env.TWILIO_SID || !env.TWILIO_TOKEN) {
-    throw new SmsError('missing_credentials', 'TWILIO_SID and TWILIO_TOKEN must both be set');
+/** Resolve Twilio credentials for a user (DB-first, env fallback). */
+function getCreds(userId: number): TwilioCreds {
+  const creds = getIntegrationCreds(userId, 'twilio') as TwilioCreds | null;
+  if (!creds || !creds.sid || !creds.token) {
+    throw new SmsError('missing_credentials', 'Twilio credentials are not configured');
   }
-  cachedClient = twilio(env.TWILIO_SID, env.TWILIO_TOKEN);
-  return cachedClient;
+  return creds;
+}
+
+/** Single-tenant: the webhook auth token belongs to user #1. */
+export function getWebhookAuthToken(): string | null {
+  const creds = getIntegrationCreds(1, 'twilio') as TwilioCreds | null;
+  return creds?.token ?? null;
 }
 
 export interface SendSmsResult {
@@ -40,33 +45,30 @@ export interface SendSmsResult {
 export interface SendSmsOptions {
   to: string; // E.164
   body: string;
-  /** Optional Twilio status callback URL — when set, Twilio POSTs delivery updates. */
   statusCallback?: string;
 }
 
 /**
- * Send an SMS via Twilio.
- * Prefers TWILIO_MESSAGING_SERVICE_SID (smart routing, sticky sender, A2P
- * compliance) when set, falls back to TWILIO_FROM_NUMBER.
+ * Send an SMS via Twilio for the given user.
+ * Prefers the Messaging Service SID (smart routing, A2P compliance) when
+ * set, falls back to the From number.
  */
-export async function sendSms(opts: SendSmsOptions): Promise<SendSmsResult> {
-  if (!env.TWILIO_MESSAGING_SERVICE_SID && !env.TWILIO_FROM_NUMBER) {
-    throw new SmsError(
-      'missing_credentials',
-      'either TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER must be set',
-    );
+export async function sendSms(userId: number, opts: SendSmsOptions): Promise<SendSmsResult> {
+  const creds = getCreds(userId);
+  if (!creds.messaging_service_sid && !creds.from_number) {
+    throw new SmsError('missing_credentials', 'Twilio needs either a Messaging Service SID or a From number');
   }
-  const client = getClient();
+  const client = twilio(creds.sid, creds.token);
   const t0 = Date.now();
   try {
     const payload: Parameters<typeof client.messages.create>[0] = {
       to: opts.to,
       body: opts.body,
     };
-    if (env.TWILIO_MESSAGING_SERVICE_SID) {
-      payload.messagingServiceSid = env.TWILIO_MESSAGING_SERVICE_SID;
-    } else if (env.TWILIO_FROM_NUMBER) {
-      payload.from = env.TWILIO_FROM_NUMBER;
+    if (creds.messaging_service_sid) {
+      payload.messagingServiceSid = creds.messaging_service_sid;
+    } else if (creds.from_number) {
+      payload.from = creds.from_number;
     }
     if (opts.statusCallback) {
       payload.statusCallback = opts.statusCallback;
@@ -76,7 +78,7 @@ export async function sendSms(opts: SendSmsOptions): Promise<SendSmsResult> {
       message_sid: msg.sid,
       status: msg.status,
       to: msg.to,
-      from: msg.from ?? env.TWILIO_FROM_NUMBER ?? '',
+      from: msg.from ?? creds.from_number ?? '',
       body: msg.body ?? opts.body,
       latency_ms: Date.now() - t0,
     };
@@ -102,25 +104,18 @@ function normalizeTwilioError(err: unknown): SmsError {
 }
 
 /**
- * Verify a Twilio webhook signature.
+ * Verify a Twilio webhook signature (HMAC-SHA1 over the full URL + sorted
+ * form params). The auth token resolves DB-first (user #1) with env fallback.
  *
- * Twilio signs every webhook request with HMAC-SHA1 over the full request URL
- * + sorted form-encoded body. The signature is in `X-Twilio-Signature`.
- * Returns true if the signature is valid for the given request.
- *
- * `fullUrl` must be the *complete* public URL Twilio used (including scheme,
- * host, path, and any query string). Build it from
- *   `${env.TWILIO_WEBHOOK_BASE_URL}${req.originalUrl}` to handle proxying.
+ * `fullUrl` must be the complete public URL Twilio used — build it from the
+ * configured public origin + req.originalUrl to handle Nginx proxying.
  */
 export function verifyWebhookSignature(
   signatureHeader: string | undefined,
   fullUrl: string,
   params: Record<string, string>,
 ): boolean {
-  // Read TWILIO_TOKEN from process.env dynamically (rather than the cached
-  // env module) so env updates via `pm2 reload --update-env` take effect
-  // without re-importing this module, and tests can override per-run.
-  const token = process.env.TWILIO_TOKEN ?? env.TWILIO_TOKEN;
+  const token = getWebhookAuthToken();
   if (!signatureHeader || !token) return false;
   try {
     return twilio.validateRequest(token, signatureHeader, fullUrl, params);
@@ -133,12 +128,10 @@ export function verifyWebhookSignature(
 export function normalizeE164(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
-  // Already E.164
   if (/^\+\d{8,15}$/.test(trimmed)) return trimmed;
-  // Strip everything non-digit
   const digits = trimmed.replace(/\D/g, '');
   if (!digits) return null;
-  if (digits.length === 10) return `+1${digits}`; // US fallback
+  if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   if (digits.length >= 8) return `+${digits}`;
   return null;

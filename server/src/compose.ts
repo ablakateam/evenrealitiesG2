@@ -135,7 +135,7 @@ export async function compose(opts: ComposeOptions): Promise<ComposeResult> {
     transcription = opts.transcriptionOverride;
   } else {
     if (!opts.audio) throw new Error('audio buffer required when transcriptionOverride is not set');
-    const sttRes = await transcribe({
+    const sttRes = await transcribe(opts.userId, {
       audio: opts.audio,
       isRawPcm: opts.isRawPcm ?? true,
       language: prefs.voice_language === 'auto' ? undefined : prefs.voice_language,
@@ -158,7 +158,7 @@ export async function compose(opts: ComposeOptions): Promise<ComposeResult> {
   }
 
   // 2. Determine provider + model
-  const provider = createProvider((opts.providerOverride ?? prefs.rewrite_provider) as ProviderName);
+  const provider = createProvider((opts.providerOverride ?? prefs.rewrite_provider) as ProviderName, opts.userId);
   const model = opts.modelOverride ?? prefs.rewrite_model;
 
   // 3. Decide the channel context for rewrites. Need a synchronous best-guess

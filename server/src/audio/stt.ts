@@ -1,8 +1,8 @@
 import OpenAI from 'openai';
 import { toFile } from 'openai/uploads';
-import { env } from '../env.js';
 import { wrapPcmAsWav } from './wav.js';
 import { LlmError } from '../llm/provider.js';
+import { getIntegrationCreds, type ApiKeyCreds } from '../integrations.js';
 
 export interface SttResult {
   text: string;
@@ -22,15 +22,13 @@ export interface SttOptions {
   prompt?: string;
 }
 
-let client: OpenAI | null = null;
-
-function getClient(): OpenAI {
-  if (client) return client;
-  if (!env.OPENAI_KEY) {
-    throw new LlmError('openai', 'whisper-1', 'missing_credentials', 'OPENAI_KEY env var is not set');
+/** Build a Whisper client from the user's OpenAI credentials (DB-first, env fallback). */
+function getClient(userId: number): OpenAI {
+  const creds = getIntegrationCreds(userId, 'openai') as ApiKeyCreds | null;
+  if (!creds || !creds.api_key) {
+    throw new LlmError('openai', 'whisper-1', 'missing_credentials', 'OpenAI credentials are not configured (needed for Whisper STT)');
   }
-  client = new OpenAI({ apiKey: env.OPENAI_KEY });
-  return client;
+  return new OpenAI({ apiKey: creds.api_key });
 }
 
 /**
@@ -38,14 +36,14 @@ function getClient(): OpenAI {
  *
  * The HUD sends raw 16kHz mono PCM accumulated from the G2 microphone events.
  * We WAV-wrap it server-side and submit to OpenAI's `audio.transcriptions`
- * endpoint with `whisper-1`.
+ * endpoint with `whisper-1`. The OpenAI key resolves DB-first per user.
  */
-export async function transcribe(opts: SttOptions): Promise<SttResult> {
+export async function transcribe(userId: number, opts: SttOptions): Promise<SttResult> {
   const t0 = Date.now();
   const wavBuffer = opts.isRawPcm ? wrapPcmAsWav(opts.audio) : opts.audio;
   const file = await toFile(wavBuffer, opts.isRawPcm ? 'audio.wav' : 'audio.bin');
   try {
-    const resp = await getClient().audio.transcriptions.create({
+    const resp = await getClient(userId).audio.transcriptions.create({
       file,
       model: 'whisper-1',
       response_format: 'verbose_json',

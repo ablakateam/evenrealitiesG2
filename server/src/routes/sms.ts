@@ -71,7 +71,7 @@ smsRouter.post('/api/sms', requireAuth, async (req, res) => {
   const outboxId = Number(insertResult.lastInsertRowid);
 
   try {
-    const twilioResult = await sendSms({
+    const twilioResult = await sendSms(userId, {
       to: to164,
       body,
       statusCallback: `${env.TWILIO_WEBHOOK_BASE_URL}/webhooks/twilio/status`,

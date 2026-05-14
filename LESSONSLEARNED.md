@@ -287,7 +287,30 @@ This also has the nice side effect of letting `pm2 reload --update-env` take eff
 **Patterns to avoid (added to top of file):** never hardcode a real host/path/phone/email in a committed file — placeholder or env var from line one. **Patterns to repeat:** keep a pre-commit PII grep guard; keep `.env` gitignored and verify with a history scan, not just a working-tree scan.
 
 ### P9 — Onboarding wizard
-*(filled in on phase completion)*
+
+**2026-05-14 · 💡 insight · env-only credentials block the dashboard from being a real admin surface**
+
+**Learning:** Through P5–P8, Twilio + LLM keys lived only in `/opt/vox/.env`. That meant the onboarding wizard literally *couldn't* configure anything — pasting a key into a form would have nowhere to go without an SSH + pm2 restart. P9's first job wasn't UI, it was a credential-storage refactor: an `integrations` table (AES-256-GCM-encrypted blobs) with a **DB-first, env-fallback** resolution path. The env vars become the bootstrap (what a fresh deploy provides); once the wizard writes a DB row, that wins.
+
+**Action:** Pattern in `server/src/integrations.ts`. `getIntegrationCreds(userId, provider)` is the single resolution point — DB row → decrypt → else `envFallbackCreds()`. Everything that needed a credential (`twilio-client`, `llm/factory`, `audio/stt`) was rethreaded to take `userId` and call it. Nothing broke for the existing env-configured deployment because fallback is transparent.
+
+**2026-05-14 · ⚠ surprise · cached `env` bites a third time — `envFallbackCreds` edition**
+
+**Learning:** Same trap as P5 (`verifyWebhookSignature`) and P8 nowhere — `envFallbackCreds` initially read the zod-cached `env` object, so a test setting `process.env.OLLAMA_CLOUD_KEY` at runtime didn't take. Third occurrence of "cached env vs live process.env."
+
+**Action:** `envFallbackCreds` now reads `process.env` directly. **Standing rule for this codebase:** anything that reads an *optional / rotatable* env var at call-time reads `process.env.X`, not `env.X`. Reserve the zod-cached `env` for vars that are required-at-boot and never change (MASTER_KEY, PORT, DB_PATH). Add this to the env.ts header comment.
+
+**2026-05-14 · ⚠ surprise · shared test DB → cross-file credential bleed**
+
+**Learning:** Vitest runs with `singleFork: true` and one temp SQLite shared across all test files. `integrations.test.ts` writing a Twilio row for user 1 made `sms.test.ts`'s "missing_credentials" test fail — it deleted the env vars but the DB row from the other file persisted, so `sendSms` still found creds.
+
+**Action:** Any test asserting a "no credentials" state must explicitly `deleteIntegration(1, provider)` first, not just clear env. Tests that need creds set them in a scoped `beforeAll`. Don't assume a clean DB between files when `singleFork` is on.
+
+**2026-05-14 · ✓ went well · OAuth deferred without losing capability**
+
+**Learning:** The plan had Gmail/Outlook one-click OAuth in steps 3 + 5. OAuth needs the *user* to stand up a GCP/Azure project — a chicken-and-egg we can't complete for them, and it adds more secrets to manage right after a PII cleanup. But the custom IMAP/SMTP path (proven against Migadu in P6) covers **every** provider including Gmail/Outlook (via app passwords). So the wizard ships fully functional with the custom path; OAuth becomes a pure convenience add later, not a blocker.
+
+**Action:** Don't let a "nice to have" auth flow gate a phase when a universal fallback already works. Wizard step 3 has the provider buttons; Gmail/Outlook just use app-password mode for now.
 
 ### P10 — Dashboard surfaces
 *(filled in on phase completion)*

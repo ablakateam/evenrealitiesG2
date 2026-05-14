@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, ArrowDownLeft, ArrowRight } from 'lucide-react';
 import {
   Card,
   CardBody,
@@ -10,7 +11,13 @@ import {
   StatusDot,
   EmptyState,
 } from '@/components/ui';
-import { apiGet, type HealthResponse, type HistoryStats, type HistoryItem } from '@/lib/api';
+import {
+  apiGet,
+  type HealthResponse,
+  type HistoryStats,
+  type HistoryItem,
+  type IntegrationView,
+} from '@/lib/api';
 
 export function Overview() {
   const health = useQuery({
@@ -25,10 +32,35 @@ export function Overview() {
     queryKey: ['history-recent'],
     queryFn: () => apiGet<{ items: HistoryItem[] }>('/api/history?limit=6'),
   });
+  const integrations = useQuery({
+    queryKey: ['integrations'],
+    queryFn: () => apiGet<{ integrations: IntegrationView[] }>('/api/integrations'),
+  });
+
+  // "Setup incomplete" if Twilio or no AI provider is configured.
+  const unconfigured = integrations.data?.integrations.filter((i) => !i.configured) ?? [];
+  const needsSetup =
+    integrations.data &&
+    (unconfigured.some((i) => i.provider === 'twilio') ||
+      !integrations.data.integrations.some(
+        (i) => ['openai', 'anthropic', 'openrouter', 'ollama-cloud'].includes(i.provider) && i.configured,
+      ));
 
   return (
     <>
       <PageHeading title="Overview" subtitle="VOX server status and recent activity" />
+
+      {needsSetup && (
+        <Link
+          to="/setup"
+          className="mb-4 flex items-center justify-between rounded-card border border-phos/30 bg-phos/5 px-4 py-3 transition-colors hover:bg-phos/10"
+        >
+          <span className="text-sm text-ink">
+            <span className="font-medium text-phos">Finish setup</span> — some integrations aren't connected yet.
+          </span>
+          <ArrowRight size={16} className="text-phos" />
+        </Link>
+      )}
 
       {/* Status block */}
       <Card className="mb-4">

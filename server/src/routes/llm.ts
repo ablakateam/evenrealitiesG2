@@ -15,10 +15,10 @@ export const llmRouter = Router();
  * actually configured server-side. Used by the dashboard's Voice & AI
  * picker to render the dropdown.
  */
-llmRouter.get('/api/llm/models', requireAuth, (_req, res) => {
+llmRouter.get('/api/llm/models', requireAuth, (req, res) => {
   res.json({
     catalog: CATALOG,
-    configured_providers: configuredProviders(),
+    configured_providers: configuredProviders(req.user!.id),
   });
 });
 
@@ -53,7 +53,7 @@ llmRouter.post('/api/llm/test', requireAuth, async (req, res) => {
     return;
   }
   try {
-    const provider = createProvider(body.provider as ProviderName);
+    const provider = createProvider(body.provider as ProviderName, req.user!.id);
     const result = await provider.complete({
       systemPrompt: body.system_prompt,
       userMessage: body.user_message,

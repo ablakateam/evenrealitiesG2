@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P8 ✓ complete → ready for P9 |
-| **% complete (overall)** | 45% (P0–P8 done) |
+| **Current phase** | P9 ✓ complete → ready for P10 |
+| **% complete (overall)** | 50% (P0–P9 done) |
 | **Last update** | 2026-05-14 |
-| **Active session** | P8 closed — dashboard scaffold live at https://<YOUR_DOMAIN>; Vite+React+Tailwind, 9-section nav, auth guard, working Overview page |
+| **Active session** | P9 closed — credential storage moved to encrypted DB rows (env-fallback kept); 6-step onboarding wizard live at `/setup`; pairing QR on Done step |
 | **Blockers** | — |
-| **Next milestone** | P9 — Onboarding wizard (6 steps, OAuth flows, pairing QR) |
+| **Next milestone** | P10 — Dashboard surfaces (build out the 7 stub pages) |
 
 ---
 
@@ -28,7 +28,8 @@
 - [x] **P6** Email (IMAP+SMTP) *(complete 2026-05-13 — `/api/email` SMTP send with idempotency, `/api/email-account` CRUD with libsodium AES-GCM at-rest encryption, IMAP IDLE worker class with exponential-backoff reconnect, IMAP manager spawning per-user workers on boot, `/api/inbox` paginated, `/api/inbox/:id/read`, `/api/inbox/stream` SSE; 66/66 vitest tests pass; **live-verified against Migadu — 462 emails pulled**; OAuth Gmail/Outlook deferred to P9 onboarding wizard)*
 - [x] **P7** Contacts + Templates + History *(complete 2026-05-13 — contacts CRUD with E.164 normalization, favorite + tags, fuzzy name match resolver, CSV import; templates CRUD with drag-reorder + 12 seeded defaults; history paginated with channel/direction/date filters + stats roll-up; 81/81 vitest tests pass; Google People OAuth sync deferred to P9 wizard)*
 - [x] **P8** Phone dashboard scaffold *(complete 2026-05-14 — `web/` Vite+React+TS+Tailwind, dark theme + G2-phosphor green, hand-rolled UI primitives, 9-section sidebar nav, auth guard + shared-secret storage, TanStack Query, Welcome screen, working Overview page (live /api/health + /api/history/stats), 7 stub pages; Nginx now serves SPA at root + proxies /api + /webhooks; live at https://<YOUR_DOMAIN>)*
-- [ ] **P9** Onboarding wizard
+- [x] **P9** Onboarding wizard *(complete 2026-05-14 — credential storage refactored to encrypted `integrations` DB rows with env-fallback; Twilio + LLM factory + Whisper STT all read DB-first; `/api/integrations` GET/PUT/DELETE + per-provider test routes; 6-step wizard at `/setup` (Welcome / Twilio / Email / AI / Contacts / Done) with real save+test per step; pairing QR on Done; "Finish setup" banner on Overview; 95/95 vitest tests pass. OAuth Gmail/Outlook one-click deferred — custom IMAP/SMTP path covers all providers)*
+- [ ] **P10** Dashboard surfaces
 - [ ] **P10** Dashboard surfaces
 - [ ] **P11** HUD scaffold
 - [ ] **P12** HUD Smart Idle
@@ -80,6 +81,12 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 | `POST https://<YOUR_DOMAIN>/api/templates/reorder` | Bearer secret | 200 | `{order: [id,id,...]}` |
 | `GET https://<YOUR_DOMAIN>/api/history` | Bearer secret | 200 | paginated audit log (filters: channel, direction, contact_id, status, dates, q) |
 | `GET https://<YOUR_DOMAIN>/api/history/stats` | Bearer secret | 200 | roll-up: sent/failed/received counts + cost_cents + tokens, today + total |
+| `GET https://<YOUR_DOMAIN>/api/integrations` | Bearer secret | 200 | masked status of every provider (twilio + 4 LLM); source = db / env / none |
+| `GET https://<YOUR_DOMAIN>/api/integrations/:provider` | Bearer secret | 200 / 400 | single provider view |
+| `PUT https://<YOUR_DOMAIN>/api/integrations` | Bearer secret | 200 / 400 | store credentials (encrypted at rest) for a provider |
+| `DELETE https://<YOUR_DOMAIN>/api/integrations/:provider` | Bearer secret | 200 | remove stored credentials (falls back to env if present) |
+| `POST https://<YOUR_DOMAIN>/api/integrations/twilio/test` | Bearer secret | 200 / 400 / 502 | live Twilio test — sends an SMS if `to` given |
+| `POST https://<YOUR_DOMAIN>/api/integrations/:provider/test` | Bearer secret | 200 / 400 / 502 | live LLM round-trip test |
 | `http://<YOUR_DOMAIN>/*` | — | 301 → HTTPS | auto-redirect via certbot config |
 | unknown route | — | 404 JSON | `{"error":"not_found"}` |
 
@@ -87,7 +94,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
 VPS: Vultr · Ubuntu 24.04.4 LTS · hostname `even` · IP `<VPS_IP>` · `vox-vps` SSH alias in `~/.ssh/config`
 
-**Dashboard**: `https://<YOUR_DOMAIN>/` serves the phone companion SPA (static, from `/opt/vox-web`). `/api/*` + `/webhooks/*` proxy to the Node app on :3000. Deploy with `web/deploy.sh`.
+**Dashboard**: `https://<YOUR_DOMAIN>/` serves the phone companion SPA (static, from `/opt/vox-web`). `/api/*` + `/webhooks/*` proxy to the Node app on :3000. Deploy with `web/deploy.sh`. Onboarding wizard at `/setup`.
+
+**Credential model**: Twilio + LLM keys resolve **DB-first** (encrypted `integrations` rows written by the wizard) with **env-var fallback** (`/opt/vox/.env` — the bootstrap path). Email account creds live in the encrypted `email_accounts` table.
 
 ---
 
@@ -129,6 +138,8 @@ VPS: Vultr · Ubuntu 24.04.4 LTS · hostname `even` · IP `<VPS_IP>` · `vox-vps
 
 | Date | Event |
 |---|---|
+| 2026-05-14 | P9 complete: credential storage → encrypted DB rows (env-fallback kept); 6-step onboarding wizard live at /setup; 95/95 tests |
+| 2026-05-14 | Security: scrubbed operational PII from repo + history (no secrets ever leaked); pre-commit PII guard added (I-006) |
 | 2026-05-14 | P8 complete: dashboard scaffold live at https://<YOUR_DOMAIN> — nav, auth guard, Overview page; Nginx serves SPA + proxies API |
 | 2026-05-13 | P7 complete: contacts + templates + history CRUD; fuzzy match resolver; CSV import; 81/81 tests pass |
 | 2026-05-13 | Migadu IMAP IDLE verified — 462 real emails pulled from <YOUR_EMAIL>; SMTP test delivered |

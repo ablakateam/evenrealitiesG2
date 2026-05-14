@@ -96,3 +96,27 @@ export interface HistoryItem {
   contact_name: string | null;
   created_at: string;
 }
+
+export type IntegrationProvider = 'twilio' | 'openai' | 'anthropic' | 'openrouter' | 'ollama-cloud';
+
+export interface IntegrationView {
+  provider: IntegrationProvider;
+  status: 'unconfigured' | 'configured' | 'error';
+  configured: boolean;
+  source: 'db' | 'env' | 'none';
+  last_tested_at: string | null;
+  last_error: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface EmailAccountView {
+  provider: 'gmail' | 'outlook' | 'icloud' | 'custom';
+  email_address: string;
+  display_name: string | null;
+  has_oauth: boolean;
+  has_password: boolean;
+  imap_host: string | null;
+  imap_status: string;
+  last_synced_at: string | null;
+  last_error: string | null;
+}

@@ -90,6 +90,9 @@ describe('POST /api/sms', () => {
     delete process.env.TWILIO_TOKEN;
     delete process.env.TWILIO_MESSAGING_SERVICE_SID;
     delete process.env.TWILIO_FROM_NUMBER;
+    // Credentials resolve DB-first now — clear any DB row too.
+    const { deleteIntegration } = await import('../src/integrations.js');
+    deleteIntegration(1, 'twilio');
     const res = await request(app)
       .post('/api/sms')
       .set('Authorization', `Bearer ${BOOTSTRAP}`)
@@ -101,8 +104,19 @@ describe('POST /api/sms', () => {
 });
 
 describe('Twilio webhook signature', () => {
+  // Webhook signature verification resolves the auth token from the Twilio
+  // integration row (DB-first). Store a known token for these tests.
+  const TEST_TOKEN = 'fake-token-for-test';
+  beforeAll(async () => {
+    const { setIntegration } = await import('../src/integrations.js');
+    setIntegration(1, 'twilio', {
+      sid: 'ACtest0000000000',
+      token: TEST_TOKEN,
+      from_number: '+15005550006',
+    });
+  });
+
   it('rejects inbound webhook without signature header', async () => {
-    process.env.TWILIO_TOKEN = 'fake-token-for-test';
     const res = await request(app)
       .post('/webhooks/twilio/inbound')
       .type('form')
@@ -111,10 +125,9 @@ describe('Twilio webhook signature', () => {
   });
 
   it('accepts inbound webhook with valid signature', async () => {
-    process.env.TWILIO_TOKEN = 'fake-token-for-test';
     const params = { From: '+14155550142', To: '+15005550006', Body: 'hello world', MessageSid: 'SMtest' };
     const url = 'https://test.example.com/webhooks/twilio/inbound';
-    const signature = twilio.getExpectedTwilioSignature('fake-token-for-test', url, params);
+    const signature = twilio.getExpectedTwilioSignature(TEST_TOKEN, url, params);
 
     const res = await request(app)
       .post('/webhooks/twilio/inbound')
