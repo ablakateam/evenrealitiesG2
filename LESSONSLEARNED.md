@@ -10,13 +10,17 @@
 
 ## Patterns to repeat (collected over time)
 
-*(Empty — populated as we ship)*
-
----
+- **Placeholder/env-var from line one** — host, path, phone, email, IP, domain never hardcoded in a committed file. `<YOUR_DOMAIN>` in docs/examples, `env.X` in code.
+- **Pre-commit PII grep guard** — `.git/hooks/pre-commit` blocks staged content matching the known PII patterns.
+- **Scan history, not just the working tree** — a working-tree grep won't catch what's in old commits; scan `git rev-list --all`.
+- **Wrap batch DB writes in `db.transaction()`** — atomic + ~10× faster.
+- **rsync `dist/` + remote `npm ci`** for native deps (compile against the target arch).
 
 ## Patterns to avoid (collected over time)
 
-*(Empty — populated as we ship)*
+- **Never hardcode operational PII in a committed file** — see the PII-scrub retro below. A public repo means every commit is forever-ish.
+- **Don't reach for a dependency when ~30–60 LOC of plain TS does it** — fuzzy match, CSV parse, AES-GCM crypto all ended up hand-rolled and better for it.
+- **Don't both quote a heredoc delimiter AND backslash-escape `$`** — pick one.
 
 ---
 
@@ -271,6 +275,16 @@ This also has the nice side effect of letting `pm2 reload --update-env` take eff
 **Learning:** `tsc -b` (the dashboard's typecheck) doesn't know about Vite's `import.meta.env` unless `src/vite-env.d.ts` exists with `/// <reference types="vite/client" />`. The `npm create vite` template includes it; since I scaffolded manually, I had to add it — plus an explicit `ImportMetaEnv` interface for our `VITE_API_BASE` var so it's typed, not `any`.
 
 **Action:** Any manually-scaffolded Vite + TS project needs `src/vite-env.d.ts`. Documented in `web/src/vite-env.d.ts`.
+
+### Mid-build — PII scrub (between P8 and P9)
+
+**2026-05-14 · ✗ went badly · operational PII leaked into public-repo history**
+
+**Learning:** Over P0–P8, operational PII steadily accumulated in committed files — local filesystem paths (revealing the macOS username), the Vultr server IP, the live domain, the Twilio number, a personal test cell number, and email addresses. Across 13 commits it touched ~48 files. It was never *secrets* (`.gitignore` covered `.env` from P0 — verified clean), but a public repo shouldn't expose any of it. Caught by the user, not by me — I should have used placeholders from the first commit.
+
+**Action:** Scrubbed all working-tree files (env-vars in code, `<PLACEHOLDER>` tokens in docs + example files), squashed all history into one clean commit with a neutral GitHub-noreply author, force-pushed, purged the local backup branch + reflog. Added a local pre-commit hook that greps staged content for the known PII patterns and blocks the commit.
+
+**Patterns to avoid (added to top of file):** never hardcode a real host/path/phone/email in a committed file — placeholder or env var from line one. **Patterns to repeat:** keep a pre-commit PII grep guard; keep `.env` gitignored and verify with a history scan, not just a working-tree scan.
 
 ### P9 — Onboarding wizard
 *(filled in on phase completion)*

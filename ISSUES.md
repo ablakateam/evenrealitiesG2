@@ -8,6 +8,7 @@
 - Status: `open`, `investigating`, `mitigated`, `resolved`, `wontfix`
 - Owner: who's working on it
 - All dates in `YYYY-MM-DD`
+- **PII hygiene (the repo is public):** never commit local filesystem paths, the server IP, the live domain, phone numbers, or real email addresses. Use placeholders (`<YOUR_DOMAIN>`, `<VPS_IP>`, `<your-org>`) in docs and example files; use env vars in code. A local pre-commit hook (`.git/hooks/pre-commit`) blocks the known PII patterns. See I-006.
 
 ---
 
@@ -25,10 +26,9 @@
 
 ## Resolved / closed issues
 
-*(Empty)*
-
 | ID | Title | Severity | Status | Resolved | Resolution |
 |---|---|---|---|---|---|
+| I-006 | Operational PII committed to public repo history | high | resolved | 2026-05-14 | Local paths, server IP, domain, phone numbers, and email addresses had accumulated across 13 per-phase commits in the public repo. **No secrets were ever committed** (`.gitignore` covered `.env` throughout — verified by scanning all history for the bootstrap secret / API keys / Twilio token / Migadu password → 0 hits). Remediation: (1) scrubbed all 13 working-tree files — code/config now flows through env vars + placeholder example files; (2) squashed all history into a single clean commit with a neutral GitHub-noreply author; (3) force-pushed `main`; (4) deleted the local backup branch + expired reflog + gc. Verified `origin/main` = 1 commit, 0 PII across all patterns + commit message + author. Pre-commit hook added locally to block future PII patterns. **Note:** GitHub may retain unreachable old commits accessible by direct SHA until its GC runs; for absolute certainty the repo can be deleted + recreated (no external engagement to lose). |
 
 ---
 
