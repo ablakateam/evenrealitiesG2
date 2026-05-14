@@ -1,0 +1,53 @@
+# Claude Code session-local config (per-machine, not for repo)
+.claude/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Even Realities build artifacts
+*.ehpk
+
+# Server runtime
+server/data/
+server/*.db
+server/*.db-journal
+server/dump.rdb
+
+# pm2
+.pm2/
+
+# Backups
+*.bak
+*~

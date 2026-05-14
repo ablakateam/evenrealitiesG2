@@ -1,0 +1,74 @@
+# VOX — Nginx site config for YOUR_DOMAIN
+#
+# This is the canonical reference for what's deployed at
+# /etc/nginx/sites-available/YOUR_DOMAIN on the Vultr VPS.
+# The TLS lines are managed by Certbot.
+#
+# Routing:
+#   /api/*       → Node app on :3000  (SSE-friendly: proxy_buffering off)
+#   /webhooks/*  → Node app on :3000  (Twilio inbound + status callbacks)
+#   /assets/*    → static, long-cache (content-hashed dashboard bundles)
+#   everything else → /opt/vox-web SPA with client-side routing fallback
+
+server {
+    server_name YOUR_DOMAIN;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 120s;
+        # SSE: stream /api/inbox/stream in real time
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    location /webhooks/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    root /opt/vox-web;
+    index index.html;
+
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    listen [::]:443 ssl ipv6only=on; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/YOUR_DOMAIN/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/YOUR_DOMAIN/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+
+server {
+    if ($host = YOUR_DOMAIN) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+    listen 80;
+    listen [::]:80;
+    server_name YOUR_DOMAIN;
+    return 404; # managed by Certbot
+}

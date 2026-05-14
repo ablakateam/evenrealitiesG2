@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.tsbuildinfo
+data/
+*.db
+*.db-journal
+.env
+.env.local
+.env.production
+.env.*.local
+coverage/
+*.log

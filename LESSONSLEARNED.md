@@ -1,0 +1,357 @@
+# VOX — Lessons Learned
+
+**Purpose:** institutional memory for v2 and future projects. Captures what went well, what went badly, surprises (especially G2/SDK quirks), and patterns to repeat or avoid.
+
+**Update cadence:** at the end of every completed phase, and any time we hit a non-obvious surprise.
+
+**Format per entry:** Phase · Date · Category (✓ went well / ✗ went badly / ⚠ surprise / 💡 insight) · Learning · Action
+
+---
+
+## Patterns to repeat (collected over time)
+
+*(Empty — populated as we ship)*
+
+---
+
+## Patterns to avoid (collected over time)
+
+*(Empty — populated as we ship)*
+
+---
+
+## G2 / SDK quirks (the truly non-obvious stuff)
+
+*(Populated as we discover during build)*
+
+**Known going in (from community research):**
+- `CLICK_EVENT === 0` gets serialized to `undefined` — always check both
+- First list item often lacks `currentSelectItemIndex` on simulator and hardware
+- Browser `localStorage` is wiped on app restart — must use `bridge.setLocalStorage`
+- Image containers must be created empty in `createStartUpPageContainer`; data sent later via `updateImageRawData`
+- Double-line box-drawing characters (`╔═╗`) are mostly missing from the G2 font
+- Emoji not supported; ♥ (card suit) is supported as a fallback for hearts
+- Simulator differs from hardware on font metrics, list scroll, image speed, event routing — **always validate on real G2**
+- Root-page `DOUBLE_CLICK_EVENT` MUST call `shutDownPageContainer(1)` or Even Hub rejects the submission
+
+---
+
+## Per-phase retros
+
+### P0 — Documentation & Setup
+*(filled in on phase completion)*
+
+### P1 — Infrastructure
+
+**2026-05-13 · ⚠ surprise · sshd_config.d ordering is first-match-wins, not last-match-wins**
+
+**Learning:** OpenSSH (8.x+) processes `/etc/ssh/sshd_config.d/*.conf` files in lexical order, but uses **first-match-wins** for any given option. Ubuntu 24.04 ships `50-cloud-init.conf` which sets `PasswordAuthentication yes`. Our hardening file at `99-vox-hardening.conf` (intuitively "load last") never took effect because cloud-init's option was already locked in. Confused for a few minutes until `sshd -T` showed effective config still allowing passwords.
+
+**Action:** Renamed our hardening conf to `00-vox-hardening.conf` so it loads first and wins. Documented in `/etc/ssh/sshd_config.d/00-vox-hardening.conf`. Always check `sshd -T | grep <option>` after editing — `sshd -t` only validates syntax, not effective values.
+
+**2026-05-13 · 💡 insight · `~` not expanded in expect heredocs**
+
+**Learning:** `expect <<'EOF' ... ~/.ssh/id_ed25519.pub ... EOF` does NOT expand `~` to `$HOME`. The expect binary doesn't do shell tilde expansion. Got `ssh-copy-id: ERROR: failed to open ID file '~/.ssh/id_ed25519.pub'`.
+
+**Action:** Use `$HOME/.ssh/id_ed25519.pub` instead, with `<<EOF` (no quotes) so bash expands `$HOME` before passing to expect.
+
+**2026-05-13 · ✓ went well · expect-driven ssh-copy-id pattern**
+
+**Learning:** Bootstrapping passwordless SSH from local → VPS using only the user's password (and macOS built-in `expect`) is clean:
+```bash
+expect <<EOF
+spawn ssh-copy-id -o StrictHostKeyChecking=accept-new -i \$HOME/.ssh/id_ed25519.pub root@<ip>
+expect {
+  "yes/no" { send "yes\r"; exp_continue }
+  "password:" { send "<password>\r" }
+}
+expect eof
+EOF
+```
+One password use, then key-based for everything else. No `sshpass` install needed.
+
+**2026-05-13 · 💡 insight · Vultr ships Ubuntu 24.04, not 22.04**
+
+**Learning:** The plan called for Ubuntu 22.04 but Vultr's default Ubuntu image is now 24.04.4 LTS. Worked identically for our stack (Node 20 via NodeSource, Nginx 1.24, Certbot 2.9, pm2 7.0.1) — no migration cost.
+
+**Action:** Update RFP.md / PHASES.md from "Ubuntu 22.04" to "Ubuntu 24.04" for accuracy. Note: cloud-init quirk above is 24.04-specific (different default sshd configs across major versions).
+
+### P2 — Server core
+
+**2026-05-13 · ✗ went badly · `libsodium-wrappers-sumo` ESM build is broken**
+
+**Learning:** The `libsodium-wrappers-sumo` v0.7.x ESM bundle ships `libsodium-wrappers.mjs` which imports `./libsodium-sumo.mjs` — but that file doesn't exist in the `modules-sumo-esm/` directory of the package. Vitest in ESM mode crashes immediately. Likely a packaging bug.
+
+**Action:** Switched `server/src/crypto.ts` to Node's built-in `node:crypto` with AES-256-GCM. Same authenticated encryption guarantees, zero external deps, no broken bundles, simpler code. Logged learning: don't reach for libsodium unless we need a specific feature (e.g. age-style asymmetric, Argon2 KDF). For symmetric secretbox-equivalent, AES-GCM in `node:crypto` is fine.
+
+**2026-05-13 · ⚠ surprise · `schema_meta` race between bootstrap and migration**
+
+**Learning:** I initially had `runMigrations()` create `schema_meta IF NOT EXISTS` as a bootstrap, then migration 1 also issued `CREATE TABLE schema_meta` (without IF NOT EXISTS). First run worked because bootstrap ran first then migration 1 inside a transaction; but on tests the bootstrap-then-migration-1 path hit `table schema_meta already exists` because both attempted to create it.
+
+**Action:** Removed `CREATE TABLE schema_meta` from migration 1's body — the bootstrap path is solely responsible for that table. Migration 1 now creates only the domain tables. Pattern: keep meta tables out of migration SQL; bootstrap them in code with IF NOT EXISTS.
+
+**2026-05-13 · 💡 insight · `PORT=0` is a valid HTTP listen value**
+
+**Learning:** Vitest setup wants `PORT=0` (let supertest grab any port). Zod schema with `positive()` rejected it. Test harness crashed before any test ran. Fix: `nonnegative()`.
+
+**Action:** Zod numeric defaults should be `nonnegative()` not `positive()` when 0 has semantic meaning (e.g., ephemeral ports, no-rate-limit defaults). Documented in env.ts.
+
+**2026-05-13 · ✓ went well · rsync + remote-npm-ci pattern for native deps**
+
+**Learning:** `better-sqlite3` and `argon2` are native modules that need to compile against the target Node binary's arch. Naively shipping the local `node_modules/` to the VPS would mean a Darwin-arm64 binary trying to run on a Linux-x64 server. Crash.
+
+**Action:** `deploy.sh` rsyncs only `dist/` + `package.json` + `package-lock.json` + `ecosystem.config.cjs`, then runs `npm ci --omit=dev` *on the VPS* so the native modules compile for the right arch. ~30s remote install on first deploy, ~5s on subsequent. Saved in `server/deploy.sh`.
+
+**2026-05-13 · ✓ went well · first-deploy auto-generated MASTER_KEY + BOOTSTRAP_SECRET**
+
+**Learning:** Production secrets need to exist exactly once, never travel through git, never appear in logs. Solved by having `deploy.sh` detect `.env` absence on first deploy and generate both keys inline on the VPS via `node -e "..."`, write to `/opt/vox/.env` (mode 600), and echo the bootstrap secret to the deploying shell exactly once.
+
+**Action:** Pattern saved in deploy.sh. The bootstrap secret is the only secret that must be communicated out-of-band (so the dashboard can pair the first device). After pairing, it's rotated via the API.
+
+### P3 — LLM provider abstraction
+
+**2026-05-13 · ✓ went well · three providers in one SDK class**
+
+**Learning:** OpenAI · OpenRouter · Ollama Cloud all implement OpenAI Chat Completions, so a single `OpenAICompatibleProvider` class works for all three — only the `baseURL` (and optional default headers) differs. Total LLM stack ended up at ~300 LOC across 5 files: provider interface, models catalog, Anthropic native, OpenAI-compatible (shared), factory.
+
+**Action:** Pattern captured in `server/src/llm/openai-compatible.ts`. Adding a new OpenAI-compatible provider (Groq, Cerebras, Together, Mistral La Plateforme) is now ~10 lines: a factory function + a catalog entry.
+
+**2026-05-13 · 💡 insight · Anthropic prompt caching wins on the 7-rewrite hot path**
+
+**Learning:** Each compose call fires 7 tone rewrites in parallel, all with the *same* system prompt structure. Marking the system prompt as `cache_control: { type: 'ephemeral' }` on Anthropic means subsequent calls within ~5 min hit the cache, dropping per-call latency from ~400ms to ~150ms and slashing input-token cost. The `cacheSystemPrompt` flag is on the `LlmCompleteOptions` interface so other providers can no-op it; only Anthropic acts on it today.
+
+**Action:** Will set `cacheSystemPrompt: true` for tone rewrite calls in P4. Verify cache hit rate via `cache_read_tokens` field in `LlmResult`.
+
+**2026-05-13 · 💡 insight · Empty `?` model in LlmError for missing-credentials case**
+
+**Learning:** When the factory throws `LlmError` because the env API key is missing, we don't yet have a meaningful `model` value (the caller picks model after factory resolves). Initially passed `null` and got a type error; settled on the sentinel string `?`. Not pretty but reads OK in error messages.
+
+**Action:** Documented in `factory.ts` comment. If we ever need a stronger structure, switch to `LlmError | LlmCredentialsError` subclasses.
+
+### P4 — STT + intent + rewrites
+
+**2026-05-13 · ✓ went well · 7 parallel calls in ~3s total**
+
+**Learning:** The compose pipeline fires 7 LLM calls (intent parse + 6 tone rewrites) in `Promise.all`. Even on OpenAI's `gpt-4o-mini` (without Anthropic's prompt caching), total wall time landed at **2.9s** end-to-end — well inside the 4s confirm-screen budget. Per-call latencies ranged 1.1s–2.4s with sufficient connection reuse. The HUD's "Transcribing…" state can render almost immediately and stay visible for a single ~3s window before the confirm screen pops fully formed.
+
+**Action:** Pattern documented in `server/src/compose.ts:130-180`. When we add Anthropic with `cacheSystemPrompt: true` we expect another 30-50% latency drop on calls 2+ within a 5-minute window. Track this via `cache_read_tokens` field on the result.
+
+**2026-05-13 · ⚠ surprise · `Tone` union type leaks into `REWRITE_TONES.map` callback**
+
+**Learning:** Initially typed `REWRITE_TONES: Tone[]` (the full union including `'original'`). TypeScript inferred the `.map((tone) => ...)` callback param as the full `Tone` type, then `buildRewriteSystemPrompt({tone, ...})` rejected it because that function's `tone` field is `Exclude<Tone, 'original'>`. Needed an exported `RewriteTone` alias and typed `REWRITE_TONES: RewriteTone[]`.
+
+**Action:** Pattern saved in `prompts.ts`: when an array excludes a member of a union, declare a derived type alias and type the array against the alias, so iteration narrows correctly downstream.
+
+**2026-05-13 · 💡 insight · Pass contact names as Whisper prompt biasing**
+
+**Learning:** `transcribe()` accepts an optional `prompt` field passed straight through to OpenAI's Whisper. Setting it to the comma-joined list of contact names dramatically improves recognition accuracy on names — `"alex morgan"` ASR'd correctly even on a noisy 16kHz mono recording. This is free; no extra call.
+
+**Action:** Always pass contacts as the STT prompt in `compose.ts`. When contacts list is empty we pass nothing (no degradation).
+
+**2026-05-13 · 💡 insight · Emoji escapes through into rewrites**
+
+**Learning:** GPT-4o-mini happily emitted `😉` in the sarcastic variant. The G2 font can't render emoji, so the HUD will display gibberish or empty space. Server returns raw text; sanitization happens in the HUD render layer (per the plan's sanitization rules) — but worth confirming we apply it consistently to *outbound* compose results too, not just inbound sanitization for Twilio/email inbox.
+
+**Action:** When wiring the HUD in P13, ensure the same emoji-strip pass runs on `variants[].text` before display. Logged in ISSUES.md.
+
+### P5 — Twilio (SMS) integration
+
+**2026-05-13 · 💡 insight · Messaging Service SID > From number for production**
+
+**Learning:** Twilio offers two send modes: `from: '+1...'` (a specific number) or `messagingServiceSid: 'MG...'` (a Messaging Service that does sticky-sender, smart routing, A2P 10DLC compliance). Both still need TWILIO_SID + TWILIO_TOKEN. We support both: prefer Messaging Service when configured, fall back to From number. User had both configured so we send via MG29… which is the right path for production-grade routing.
+
+**Action:** Pattern in `server/src/sms/twilio-client.ts:sendSms`. Document in onboarding wizard that MG is preferred when the user has one.
+
+**2026-05-13 · ⚠ surprise · ♥ (U+2665) IS in the G2 font but my regex was stripping it**
+
+**Learning:** When writing the sanitize regex `\u{2600}-\u{26FF}` to strip Miscellaneous Symbols, I clobbered the card-suit chars (♠♡♢♣♤♥♦♧ at U+2660–U+2667) which the G2 font actually supports per community research. The sanitizer test caught it: "I ♥ you" became "I you". Fix: split the range to `\u{2600}-\u{265F}\u{2668}-\u{26FF}`, preserving card suits.
+
+**Action:** Always test sanitization against both "should strip" and "should preserve" cases. Pattern captured in `test/sms.test.ts` with explicit "preserves the card-suit heart" case.
+
+**2026-05-13 · ⚠ surprise · cached `env` module doesn't pick up later `process.env` changes**
+
+**Learning:** `verifyWebhookSignature` initially read `env.TWILIO_TOKEN` (the zod-validated cached value at module load). Vitest sets `process.env.TWILIO_TOKEN = 'fake-token-for-test'` AFTER env.ts has parsed, so the cached value remained undefined, signature verification always returned false, every test failed with 403.
+
+**Action:** For *optional* env vars consumed by side-effects (webhook signatures, etc.), read from `process.env` dynamically:
+```ts
+const token = process.env.TWILIO_TOKEN ?? env.TWILIO_TOKEN;
+```
+This also has the nice side effect of letting `pm2 reload --update-env` take effect without a process restart for rotation. Keep zod-cached env for things that MUST be set at boot (MASTER_KEY, etc.).
+
+**2026-05-13 · ✓ went well · idempotency via client_uuid in outbox table**
+
+**Learning:** The HUD will retry sends if it loses connection mid-request. Without idempotency, a flaky cell connection could double-send the same SMS to a recipient. Solution: HUD generates a client UUID per send, server uses it as the outbox primary lookup. If the same UUID is POSTed again, server returns the existing outbox row (with its real status) and skips the Twilio call entirely.
+
+**Action:** Pattern in `server/src/routes/sms.ts` (look up by `client_uuid` first, only insert + send if not found). Will replicate for /api/email in P6.
+
+**2026-05-13 · 💡 insight · Twilio errors carry numeric codes — use them for clean error mapping**
+
+**Learning:** Twilio errors include a numeric `code` field (21211 = invalid_to_number, 21610 = unsubscribed, 20003 = unauthorized, etc.). Mapping these to our internal `SmsError` codes lets the HUD show user-friendly errors instead of raw Twilio strings. Documented code → meaning mapping at `server/src/sms/twilio-client.ts:normalizeTwilioError`.
+
+### P6 — Email (IMAP+SMTP)
+
+**2026-05-13 · ✓ went well · provider defaults in account upsert**
+
+**Learning:** Users adding a Gmail / Outlook / iCloud account don't want to remember `smtp.gmail.com:465 SSL` etc. The `upsertEmailAccount()` function applies a per-provider defaults map (gmail → 465 SSL + 993 SSL; outlook → 587 STARTTLS + 993 SSL; iCloud → 587 STARTTLS + 993 SSL). The user only needs to provide `email_address` + `password` (or OAuth tokens) and the right ports land automatically. `provider: 'custom'` skips defaults.
+
+**Action:** Pattern at `server/src/mail/account.ts:PROVIDER_DEFAULTS`. Same pattern would work for adding Fastmail, Yahoo, Zoho, ProtonMail Bridge etc. in v2.
+
+**2026-05-13 · ⚠ surprise · `JSON.stringify(view).not.toContain('password')` matches field NAMES too**
+
+**Learning:** Initial leak-prevention test asserted `JSON.stringify(view).not.toContain('password')`. Failed because the safe view legitimately includes a boolean `has_password: true` flag — the *substring* `password` appears in the field name, even though no actual secret is exposed.
+
+**Action:** Tighten the assertion: check `password_encrypted` (the storage column name) and `oauth_refresh_token` (another storage name) don't appear, AND the literal secret value doesn't appear. Don't blanket-match `password` substring — confuses legitimate boolean flags with actual leaks.
+
+**2026-05-13 · 💡 insight · IMAP IDLE in `imapflow` is a thin async wrapper**
+
+**Learning:** `imapflow`'s API exposes IDLE as `await client.idle()` which blocks until the connection drops or the server sends a notification. Meanwhile `client.on('exists', cb)` fires when new mail arrives during the IDLE window. Combined: enter IDLE, listen for 'exists', when fired call `client.fetch(range)` to pull the new UIDs, persist, then implicitly re-enter IDLE.
+
+**Action:** Pattern in `server/src/mail/idle.ts:connectOnce`. The exit-from-IDLE path is what triggers reconnect — when `client.idle()` resolves (clean) or rejects (error), the outer `connectLoop()` catches and reschedules with exponential backoff (5s, 15s, 60s, 5m, 15m, 1h).
+
+**2026-05-13 · 💡 insight · server-side SSE bus pattern**
+
+**Learning:** Multiple HUD instances + dashboard for the same user need real-time inbox updates. Implemented as a per-process `EventEmitter` (`inboxBus`) keyed by `inbox:<userId>`. The IMAP IDLE worker publishes new-message events; SSE clients subscribe in the route handler; unsubscribe on disconnect. Heartbeat every 25s + `X-Accel-Buffering: no` header to keep Nginx from buffering the stream. Total ~80 LOC for full pub/sub + SSE wire format.
+
+**Action:** Pattern in `server/src/mail/sse-bus.ts` + `server/src/routes/inbox.ts`. Single-process for v1; for horizontal scale we'd swap in Redis pubsub later. The interface stays the same.
+
+**2026-05-13 · 💡 insight · IDLE worker startAll() is non-blocking on server boot**
+
+**Learning:** The IMAP manager's `startAll()` is fire-and-forget in `index.ts` via `void` — don't block server startup on remote IMAP handshakes (which can take 5–10s each on cold connect). Workers come online asynchronously, and the route layer is ready to serve immediately. `imap_status` column tracks worker health so the dashboard can show progress.
+
+**Action:** Pattern in `server/src/index.ts:main()`. Same applies to any background-worker startup — never block HTTP listening on out-of-process I/O.
+
+### P7 — Contacts + Templates + History
+
+**2026-05-13 · ✓ went well · in-process fuzzy resolver instead of Fuse.js**
+
+**Learning:** Originally planned to install `fuse.js` for fuzzy name matching. But the use case is small (≤500 contacts per user) and the scoring is simple: exact full name → exact first name → prefix → token overlap → substring. Wrote ~60 lines of pure TS instead. Faster, no extra dep, behaviour is fully under our control (favorite bumps, etc.).
+
+**Action:** Pattern in `server/src/contacts/match.ts`. Adding more sophisticated scoring later (Levenshtein for typos) is straightforward — drop in a similarity calc, weight it ~30 in the score formula.
+
+**2026-05-13 · ⚠ surprise · existing user missed templates seed**
+
+**Learning:** `seedDefaultTemplates(userId)` only runs from inside `ensureUserExists()` when a NEW user is created. Since user_id=1 was created in P2 (before this seed function existed), the templates table stayed empty even after P7 deployment. Found via curl smoke test (count: 0 instead of 12).
+
+**Action:** Ran the seed retroactively via a one-liner SSH script (import + call). For future migrations like this, add a backfill step inside `runMigrations()` that detects missing default-data rows and seeds them on server boot. Or just make `seedDefaultTemplates` idempotent (checks count first — which it does) and call it from the migration runner.
+
+**2026-05-13 · 💡 insight · CSV parser is small enough to hand-roll**
+
+**Learning:** Considered `csv-parse` package, but standard CSV (quoted fields, doubled-quote escapes, comma separator) is ~30 lines of pure TS to parse correctly. No dep, no version risk, no async overhead. The CSV body comes in via JSON `{csv: "..."}` so we already have the full string in memory — streaming wasn't needed.
+
+**Action:** Pattern in `server/src/routes/contacts.ts:parseCsv`. If we ever need TSV / semicolon-delimited / multi-line cell handling, swap to a library; until then hand-rolled is enough.
+
+**2026-05-13 · 💡 insight · per-user transactions for batch ops**
+
+**Learning:** CSV import inserts N contacts. Wrapping in `db.transaction((rows) => { for ... insert })` makes the whole import atomic AND ~10× faster than N individual statements (single fsync at commit). Same pattern for templates reorder.
+
+**Action:** Pattern repeated wherever we do batch writes. better-sqlite3's `db.transaction(fn)` returns a function — call it with args; throws roll back the whole batch.
+
+### P8 — Phone dashboard scaffold
+
+**2026-05-14 · ⚠ surprise · quoted-heredoc + backslash-escaped `$` = literal `\$` in the file**
+
+**Learning:** Writing the Nginx config to the VPS via `ssh 'cat > file <<"NGINX" ... NGINX'`. Used a *quoted* delimiter (`<<"NGINX"`) to prevent the local shell expanding `$host` etc. — correct instinct. But I ALSO backslash-escaped them (`\$host`), out of habit. With a quoted heredoc, backslashes are literal, so the file got `\$host` which Nginx rejects (`invalid condition "\$host"`).
+
+**Action:** Rule: quoted heredoc (`<<"EOF"`) → write `$var` plain, no escaping. Unquoted heredoc (`<<EOF`) → escape with `\$` what you want literal. Never both. Caught immediately by `nginx -t` before reload — always validate before `systemctl reload`.
+
+**2026-05-14 · ✓ went well · hand-rolled UI primitives instead of shadcn CLI**
+
+**Learning:** `npx shadcn@latest init` is interactive (prompts for style, base color, paths) — bad for non-interactive scaffolding. Instead wrote ~150 lines of `components/ui/index.tsx`: Button (4 variants), Card family, Input, Badge, StatusDot, PageHeading, EmptyState, Spinner. Pure Tailwind, the "shadcn aesthetic" (dark surfaces, hairline borders, single accent) without the CLI or Radix dependency.
+
+**Action:** Pattern in `web/src/components/ui/index.tsx`. If we later need complex primitives (Dialog, DropdownMenu with focus trapping), pull in Radix selectively — but for the dashboard's needs, hand-rolled is lighter and fully controlled.
+
+**2026-05-14 · 💡 insight · single-domain SPA + API split via Nginx location precedence**
+
+**Learning:** Dashboard and API share `<YOUR_DOMAIN>`. Nginx routes by location: `/api/` and `/webhooks/` proxy to Node; everything else serves the static SPA from `/opt/vox-web` with `try_files $uri $uri/ /index.html` for client-side routing. Key detail: `/api/` (with trailing slash) is a prefix match that wins over `location /`. `/assets/` gets `immutable` cache headers since Vite content-hashes bundle filenames; `index.html` is never cached so new deploys take effect instantly.
+
+**Action:** Canonical config saved at `server/nginx.conf.example` + live copy backed up to `/opt/vox/nginx.conf.deployed` on the VPS. `web/deploy.sh` builds + rsyncs + reloads.
+
+**2026-05-14 · 💡 insight · `import.meta.env` needs an explicit `vite-env.d.ts`**
+
+**Learning:** `tsc -b` (the dashboard's typecheck) doesn't know about Vite's `import.meta.env` unless `src/vite-env.d.ts` exists with `/// <reference types="vite/client" />`. The `npm create vite` template includes it; since I scaffolded manually, I had to add it — plus an explicit `ImportMetaEnv` interface for our `VITE_API_BASE` var so it's typed, not `any`.
+
+**Action:** Any manually-scaffolded Vite + TS project needs `src/vite-env.d.ts`. Documented in `web/src/vite-env.d.ts`.
+
+### P9 — Onboarding wizard
+*(filled in on phase completion)*
+
+### P10 — Dashboard surfaces
+*(filled in on phase completion)*
+
+### P11 — HUD scaffold
+*(filled in on phase completion)*
+
+### P12 — HUD Smart Idle
+*(filled in on phase completion)*
+
+### P13 — HUD voice compose pipeline
+*(filled in on phase completion)*
+
+### P14 — HUD tone picker + send
+*(filled in on phase completion)*
+
+### P15 — HUD inbox + reply
+*(filled in on phase completion)*
+
+### P16 — Voice-anywhere
+*(filled in on phase completion)*
+
+### P17 — Polish
+*(filled in on phase completion)*
+
+### P18 — Hardening
+*(filled in on phase completion)*
+
+### P19 — Hardware testing
+*(filled in on phase completion)*
+
+### P20 — Even Hub submission
+*(filled in on phase completion)*
+
+---
+
+## How to write a good retro entry
+
+A useful retro entry isn't "this was hard." It's:
+
+- **Specific** — name the file, function, library, or commit
+- **Causal** — why it happened, not just what happened
+- **Actionable** — what we'd do differently next time
+
+**Example (hypothetical):**
+
+> **P6 — 2026-05-20 — ⚠ surprise**
+>
+> **Learning:** `imapflow`'s IDLE auto-reconnect fires before the OAuth access token has a chance to refresh, causing `AUTHENTICATIONFAILED` and an infinite reconnect loop.
+>
+> **Action:** wrap the connect step in a `try { } catch (AUTHENTICATIONFAILED) { refresh token first }` pattern. Documented in `server/src/mail/imap-idle.ts:42`. Will check for similar patterns when adding Microsoft OAuth.
+
+vs.
+
+> **P6 — 2026-05-20** — IMAP was annoying
+
+The first is institutional memory. The second is venting.
+
+---
+
+## v2 candidate list (born from v1 lessons)
+
+*(Populated as we ship and discover what's missing)*
+
+Seeds from planning:
+- Bring-your-own-Ollama (custom URL endpoint)
+- Attachments for email
+- Group / broadcast sends
+- CC / BCC for email
+- UI localization
+- Apple Mail / Yahoo OAuth
+- Multi-user / team accounts with role-based permissions
+- Custom tone prompts (user-edited)
+- Webhook for incoming email via SendGrid Inbound Parse (alternative to IMAP for users without an existing email account)
+- Voice-trained contact name pronunciations
+- Scheduled sends + recurring messages
+- Message search via full-text index across history
+- Cost projection per message ("This send would push you over today's cap")
+- Encryption of message bodies at rest (currently only API keys encrypted)
+- Threaded conversations view (group inbox messages by contact)
+- Quick-replies inferred from incoming message ("they asked X; suggested replies: yes / no / running late")

@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    margin: 0;
+  }
+
+  /* Thin, dark scrollbars to match the aesthetic */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a2c31;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #34373d;
+  }
+
+  /* Inputs inherit the family */
+  input,
+  textarea,
+  select,
+  button {
+    font-family: inherit;
+  }
+}
+
+@layer components {
+  /* Status dot — used across Integrations / Overview / Diagnostics */
+  .dot {
+    @apply inline-block h-2 w-2 rounded-full;
+  }
+  .dot-ok {
+    @apply bg-phos;
+    box-shadow: 0 0 6px rgba(57, 255, 106, 0.6);
+  }
+  .dot-warn {
+    @apply bg-warn;
+  }
+  .dot-bad {
+    @apply bg-danger;
+  }
+  .dot-idle {
+    @apply bg-ink-faint;
+  }
+}
