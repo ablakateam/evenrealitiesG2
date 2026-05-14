@@ -339,7 +339,36 @@ This also has the nice side effect of letting `pm2 reload --update-env` take eff
 **Action:** `web/src/components/ui/index.tsx` stays dependency-free. If we ever need true focus-trapping / nested dialogs, revisit — but not before.
 
 ### P11 — HUD scaffold
-*(filled in on phase completion)*
+
+**2026-05-14 · ✓ went well · start from the official template, don't guess the SDK**
+
+**Learning:** My research notes had the SDK API roughly right, but `npx degit even-realities/evenhub-templates/minimal` gave the *exact* real surface — and it differed from my notes in ways that would have cost hours: `containerID` is a **number** not a string; `CreateStartUpPageContainer` / `TextContainerProperty` are **classes** (constructed with `new`), not plain objects; events split across **four** envelopes (`sysEvent` / `textEvent` / `listEvent` / `audioEvent`); the `asr` template showed `permissions` is `[{name, desc}]` objects. Reading the SDK's `index.d.ts` (1292 lines) confirmed the rest (`audioControl`, `textContainerUpgrade`, `shutDownPageContainer`, `OsEventTypeList` ordinals).
+
+**Action:** Always scaffold from the vendor template + read the shipped `.d.ts` before writing a line. Don't build against research-grade API knowledge.
+
+**2026-05-14 · ⚠ surprise · CLICK_EVENT (0) really does arrive as `undefined`**
+
+**Learning:** The template's own comment warned about it; the simulator confirmed it live. A `click` produced `{"sysEvent":{"eventSource":1}}` — `eventType` field entirely **absent** because protobuf omits zero values. Any `eventType === CLICK_EVENT` comparison silently never matches.
+
+**Action:** `normalizeEvent` coalesces `eventType ?? OsEventTypeList.CLICK_EVENT` everywhere before comparing. Centralized in `hud/src/bridge.ts` so no page ever touches a raw event.
+
+**2026-05-14 · ✗ went badly · text-drawn box frames can't align on the G2 font (I-007)**
+
+**Learning:** The whole planned Pine/Norton-Commander aesthetic assumed drawing the frame with box-drawing chars (`┌─┐│└┘`) inside the text `content`. First simulator screenshot exposed the flaw: the G2 firmware font renders box-drawing glyphs and letters at **different advance widths** — 37 dashes span ~full container width, 37 letters span ~half. A fixed-char-count frame's right edge wanders depending on what's on the row.
+
+**Action:** Logged I-007. P12 redesigns the visual system to use the SDK's real container `borderWidth`/`borderColor`/`borderRadius` for framing; text `content` carries only inner lines. P11 pages fell back to plain left-aligned text (renders predictably). The `render.ts` frame helpers are kept but marked provisional.
+
+**2026-05-14 · ✓ went well · the simulator's :9898 automation API is a real test loop**
+
+**Learning:** `evenhub-simulator --automation-port 9898 <url>` exposes `/api/ping`, `/api/console`, `/api/screenshot/glasses` (576×288 PNG), and `/api/input` (`{action: click|double_click|up|down}`). Backgrounding the simulator + driving it over curl gave a genuine automated render/interact/screenshot loop — I verified tap→CLICK_EVENT→textContainerUpgrade, scroll, and the double-tap exit gate without ever looking at the GUI window.
+
+**Action:** This is the HUD dev loop for P12–P17. Pattern: start `npm run dev` + `evenhub-simulator --automation-port 9898` in the background, then `curl` input + screenshot. Note the input schema is `{action}` not `{type}`.
+
+**2026-05-14 · 💡 insight · pairing bootstrap via launch-URL query params**
+
+**Learning:** The HUD can't scan a QR (no camera in the SDK), and typing a secret on glasses is the exact friction VOX exists to remove. For the dev/sideload path, `evenhub qr -u "<url>?server=...&secret=..."` carries the pairing in the launch URL; `bootstrapPairingFromUrl()` lifts it into KVS on first launch. Production install (from Even Hub, no URL params) still needs a real pairing UX — logged for a later phase.
+
+**Action:** Pattern in `hud/src/kvs.ts`. Production pairing flow is an open design question for P19/polish.
 
 ### P12 — HUD Smart Idle
 *(filled in on phase completion)*

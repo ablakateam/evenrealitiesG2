@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P10 ✓ complete → ready for P11 |
-| **% complete (overall)** | 55% (P0–P10 done) |
+| **Current phase** | P11 ✓ complete → ready for P12 |
+| **% complete (overall)** | 60% (P0–P11 done) |
 | **Last update** | 2026-05-14 |
-| **Active session** | P10 closed — all 8 dashboard surfaces built + live; the entire phone companion is now functional. Server-side complete. |
+| **Active session** | P11 closed — HUD scaffold from the official template; bridge bootstrap, event normalization, page router, KVS, API client; render + event loop + double-tap exit gate verified on the simulator; `.ehpk` packs |
 | **Blockers** | — |
-| **Next milestone** | P11 — HUD scaffold (the app that runs on the glasses) |
+| **Next milestone** | P12 — HUD Smart Idle (+ redesign the framed visual system using container borders, I-007) |
 
 ---
 
@@ -30,9 +30,7 @@
 - [x] **P8** Phone dashboard scaffold *(complete 2026-05-14 — `web/` Vite+React+TS+Tailwind, dark theme + G2-phosphor green, hand-rolled UI primitives, 9-section sidebar nav, auth guard + shared-secret storage, TanStack Query, Welcome screen, working Overview page (live /api/health + /api/history/stats), 7 stub pages; Nginx now serves SPA at root + proxies /api + /webhooks; live at https://<YOUR_DOMAIN>)*
 - [x] **P9** Onboarding wizard *(complete 2026-05-14 — credential storage refactored to encrypted `integrations` DB rows with env-fallback; Twilio + LLM factory + Whisper STT all read DB-first; `/api/integrations` GET/PUT/DELETE + per-provider test routes; 6-step wizard at `/setup` (Welcome / Twilio / Email / AI / Contacts / Done) with real save+test per step; pairing QR on Done; "Finish setup" banner on Overview; 95/95 vitest tests pass. OAuth Gmail/Outlook one-click deferred — custom IMAP/SMTP path covers all providers)*
 - [x] **P10** Dashboard surfaces *(complete 2026-05-14 — all 8 stub pages built into full surfaces: Integrations (per-provider cards + edit/test/remove modals + email account), Contacts (search, CRUD, favorite, CSV import), Templates (CRUD + up/down reorder), Inbox (list + thread + mark-read, 20s poll), Activity (filterable history + stats + CSV export), Preferences (5 sectioned config groups, auto-save), Diagnostics (run-all panel against `/api/diagnostics`), Account (pairing QR + secret rotation + sign out). Server: `/api/diagnostics` (5/5 checks pass live), `/api/account` + `/api/account/rotate-secret`. UI primitives added: Switch, Select, Modal, Field, InlineNote. Dashboard 99 KB gzipped. The full phone companion is functional.)*
-- [ ] **P11** HUD scaffold
-- [ ] **P10** Dashboard surfaces
-- [ ] **P11** HUD scaffold
+- [x] **P11** HUD scaffold *(complete 2026-05-14 — `hud/` from the official `evenhub-templates/minimal`; bridge.ts (event normalization across sysEvent/textEvent/listEvent/audioEvent, CLICK_EVENT-as-undefined coalesced), kvs.ts (bridge.setLocalStorage wrapper + pairing store + URL bootstrap), api.ts (bearer-auth client to the VOX server), router.ts (page state machine + back stack), render.ts (container helpers + brightness palette), Idle placeholder page; root double-tap → `shutDownPageContainer(1)` exit gate enforced in main.ts; verified on `evenhub-simulator` via its :9898 automation API — render, tap→CLICK_EVENT→textContainerUpgrade, scroll, double-tap exit all confirmed; `vox.ehpk` packs (31.7 KB). Discovered I-007: text-drawn box frames can't align on the G2 font.)*
 - [ ] **P12** HUD Smart Idle
 - [ ] **P13** HUD voice compose pipeline
 - [ ] **P14** HUD tone picker + send
@@ -142,6 +140,7 @@ VPS: Vultr · Ubuntu 24.04.4 LTS · hostname `even` · IP `<VPS_IP>` · `vox-vps
 
 | Date | Event |
 |---|---|
+| 2026-05-14 | P11 complete: HUD scaffold from official template; bridge/router/kvs/api built; simulator-verified; vox.ehpk packs |
 | 2026-05-14 | P10 complete: all 8 dashboard surfaces built + live; phone companion fully functional; server-side build complete |
 | 2026-05-14 | P9 complete: credential storage → encrypted DB rows (env-fallback kept); 6-step onboarding wizard live at /setup; 95/95 tests |
 | 2026-05-14 | Security: scrubbed operational PII from repo + history (no secrets ever leaked); pre-commit PII guard added (I-006) |
