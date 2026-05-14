@@ -313,7 +313,30 @@ This also has the nice side effect of letting `pm2 reload --update-env` take eff
 **Action:** Don't let a "nice to have" auth flow gate a phase when a universal fallback already works. Wizard step 3 has the provider buttons; Gmail/Outlook just use app-password mode for now.
 
 ### P10 — Dashboard surfaces
-*(filled in on phase completion)*
+
+**2026-05-14 · ✓ went well · the whole phase was pure assembly because the API was already complete**
+
+**Learning:** P10 built 8 full dashboard pages and only needed *two* small server additions (`/api/diagnostics`, `/api/account*`). Everything else — contacts CRUD, templates, history, inbox, integrations, config — was already live from P2–P9. The pages are thin: TanStack Query against existing endpoints + the UI primitives. Building the API-complete backend first (P2–P9) made the entire frontend phase low-risk assembly work.
+
+**Action:** Validates the "server-complete before frontend" sequencing in PHASES.md. Keep it for any future surface work — never build a page against an endpoint that doesn't exist yet.
+
+**2026-05-14 · 💡 insight · auto-save preferences beat a Save button**
+
+**Learning:** The Preferences page has ~22 fields across 5 sections. A single "Save" button would mean either (a) one giant PUT on click, or (b) per-field dirty tracking. Instead: each control's `onChange` fires an immediate `PUT /api/config` with just that one field (the route already does partial updates). A tiny "saved" note flashes. No dirty state, no save button, no lost edits.
+
+**Action:** Pattern in `web/src/pages/Preferences.tsx` — `set(key, value)` updates local state + fires the partial PUT. Works because the config route was built partial-update-friendly from P2.
+
+**2026-05-14 · 💡 insight · up/down arrows instead of drag-to-reorder**
+
+**Learning:** The plan mentioned drag-to-reorder for templates. `dnd-kit` is ~30KB + real complexity (sensors, collision detection, accessibility). For a list of ~12 templates, two ChevronUp/Down buttons that swap adjacent items and POST the new order array are ~15 lines, zero deps, and fully keyboard-accessible by default.
+
+**Action:** Pattern in `web/src/pages/Templates.tsx`. Reserve real drag-and-drop for cases where the list is long or spatial arrangement matters. For short ordered lists, arrows win.
+
+**2026-05-14 · ✓ went well · hand-rolled Modal over a dialog library**
+
+**Learning:** Needed modals for contact edit, template edit, integration credential forms, secret rotation. Rather than pull in Radix Dialog, the `Modal` primitive is ~25 lines: a fixed overlay div, click-outside-to-close, `stopPropagation` on the inner card. No focus-trap (acceptable for this single-user admin tool). Total UI primitive set is still one ~330-line file.
+
+**Action:** `web/src/components/ui/index.tsx` stays dependency-free. If we ever need true focus-trapping / nested dialogs, revisit — but not before.
 
 ### P11 — HUD scaffold
 *(filled in on phase completion)*

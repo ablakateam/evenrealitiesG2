@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P9 ✓ complete → ready for P10 |
-| **% complete (overall)** | 50% (P0–P9 done) |
+| **Current phase** | P10 ✓ complete → ready for P11 |
+| **% complete (overall)** | 55% (P0–P10 done) |
 | **Last update** | 2026-05-14 |
-| **Active session** | P9 closed — credential storage moved to encrypted DB rows (env-fallback kept); 6-step onboarding wizard live at `/setup`; pairing QR on Done step |
+| **Active session** | P10 closed — all 8 dashboard surfaces built + live; the entire phone companion is now functional. Server-side complete. |
 | **Blockers** | — |
-| **Next milestone** | P10 — Dashboard surfaces (build out the 7 stub pages) |
+| **Next milestone** | P11 — HUD scaffold (the app that runs on the glasses) |
 
 ---
 
@@ -29,7 +29,8 @@
 - [x] **P7** Contacts + Templates + History *(complete 2026-05-13 — contacts CRUD with E.164 normalization, favorite + tags, fuzzy name match resolver, CSV import; templates CRUD with drag-reorder + 12 seeded defaults; history paginated with channel/direction/date filters + stats roll-up; 81/81 vitest tests pass; Google People OAuth sync deferred to P9 wizard)*
 - [x] **P8** Phone dashboard scaffold *(complete 2026-05-14 — `web/` Vite+React+TS+Tailwind, dark theme + G2-phosphor green, hand-rolled UI primitives, 9-section sidebar nav, auth guard + shared-secret storage, TanStack Query, Welcome screen, working Overview page (live /api/health + /api/history/stats), 7 stub pages; Nginx now serves SPA at root + proxies /api + /webhooks; live at https://<YOUR_DOMAIN>)*
 - [x] **P9** Onboarding wizard *(complete 2026-05-14 — credential storage refactored to encrypted `integrations` DB rows with env-fallback; Twilio + LLM factory + Whisper STT all read DB-first; `/api/integrations` GET/PUT/DELETE + per-provider test routes; 6-step wizard at `/setup` (Welcome / Twilio / Email / AI / Contacts / Done) with real save+test per step; pairing QR on Done; "Finish setup" banner on Overview; 95/95 vitest tests pass. OAuth Gmail/Outlook one-click deferred — custom IMAP/SMTP path covers all providers)*
-- [ ] **P10** Dashboard surfaces
+- [x] **P10** Dashboard surfaces *(complete 2026-05-14 — all 8 stub pages built into full surfaces: Integrations (per-provider cards + edit/test/remove modals + email account), Contacts (search, CRUD, favorite, CSV import), Templates (CRUD + up/down reorder), Inbox (list + thread + mark-read, 20s poll), Activity (filterable history + stats + CSV export), Preferences (5 sectioned config groups, auto-save), Diagnostics (run-all panel against `/api/diagnostics`), Account (pairing QR + secret rotation + sign out). Server: `/api/diagnostics` (5/5 checks pass live), `/api/account` + `/api/account/rotate-secret`. UI primitives added: Switch, Select, Modal, Field, InlineNote. Dashboard 99 KB gzipped. The full phone companion is functional.)*
+- [ ] **P11** HUD scaffold
 - [ ] **P10** Dashboard surfaces
 - [ ] **P11** HUD scaffold
 - [ ] **P12** HUD Smart Idle
@@ -87,6 +88,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 | `DELETE https://<YOUR_DOMAIN>/api/integrations/:provider` | Bearer secret | 200 | remove stored credentials (falls back to env if present) |
 | `POST https://<YOUR_DOMAIN>/api/integrations/twilio/test` | Bearer secret | 200 / 400 / 502 | live Twilio test — sends an SMS if `to` given |
 | `POST https://<YOUR_DOMAIN>/api/integrations/:provider/test` | Bearer secret | 200 / 400 / 502 | live LLM round-trip test |
+| `GET https://<YOUR_DOMAIN>/api/account` | Bearer secret | 200 | account info (created_at, rotated_at) |
+| `POST https://<YOUR_DOMAIN>/api/account/rotate-secret` | Bearer secret | 200 | generate a new shared secret, returns plaintext once |
+| `POST https://<YOUR_DOMAIN>/api/diagnostics` | Bearer secret | 200 | run-all health check report (db, twilio, email, IMAP, LLM providers) |
 | `http://<YOUR_DOMAIN>/*` | — | 301 → HTTPS | auto-redirect via certbot config |
 | unknown route | — | 404 JSON | `{"error":"not_found"}` |
 
@@ -138,6 +142,7 @@ VPS: Vultr · Ubuntu 24.04.4 LTS · hostname `even` · IP `<VPS_IP>` · `vox-vps
 
 | Date | Event |
 |---|---|
+| 2026-05-14 | P10 complete: all 8 dashboard surfaces built + live; phone companion fully functional; server-side build complete |
 | 2026-05-14 | P9 complete: credential storage → encrypted DB rows (env-fallback kept); 6-step onboarding wizard live at /setup; 95/95 tests |
 | 2026-05-14 | Security: scrubbed operational PII from repo + history (no secrets ever leaked); pre-commit PII guard added (I-006) |
 | 2026-05-14 | P8 complete: dashboard scaffold live at https://<YOUR_DOMAIN> — nav, auth guard, Overview page; Nginx serves SPA + proxies API |

@@ -4,16 +4,14 @@ import { Layout } from '@/components/Layout';
 import { Welcome } from '@/pages/Welcome';
 import { Overview } from '@/pages/Overview';
 import { Wizard } from '@/pages/Wizard';
-import {
-  InboxPage,
-  ContactsPage,
-  TemplatesPage,
-  ActivityPage,
-  IntegrationsPage,
-  PreferencesPage,
-  DiagnosticsPage,
-  AccountPage,
-} from '@/pages/stubs';
+import { Inbox } from '@/pages/Inbox';
+import { Contacts } from '@/pages/Contacts';
+import { Templates } from '@/pages/Templates';
+import { Activity } from '@/pages/Activity';
+import { Integrations } from '@/pages/Integrations';
+import { Preferences } from '@/pages/Preferences';
+import { Diagnostics } from '@/pages/Diagnostics';
+import { Account } from '@/pages/Account';
 
 export function App() {
   const { isAuthed } = useAuth();
@@ -33,14 +31,14 @@ export function App() {
             <Route path="/setup" element={<Wizard />} />
             <Route element={<Layout />}>
               <Route path="/" element={<Overview />} />
-              <Route path="/inbox" element={<InboxPage />} />
-              <Route path="/contacts" element={<ContactsPage />} />
-              <Route path="/templates" element={<TemplatesPage />} />
-              <Route path="/activity" element={<ActivityPage />} />
-              <Route path="/integrations" element={<IntegrationsPage />} />
-              <Route path="/preferences" element={<PreferencesPage />} />
-              <Route path="/diagnostics" element={<DiagnosticsPage />} />
-              <Route path="/account" element={<AccountPage />} />
+              <Route path="/inbox" element={<Inbox />} />
+              <Route path="/contacts" element={<Contacts />} />
+              <Route path="/templates" element={<Templates />} />
+              <Route path="/activity" element={<Activity />} />
+              <Route path="/integrations" element={<Integrations />} />
+              <Route path="/preferences" element={<Preferences />} />
+              <Route path="/diagnostics" element={<Diagnostics />} />
+              <Route path="/account" element={<Account />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </>

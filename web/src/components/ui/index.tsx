@@ -126,3 +126,118 @@ export function Spinner() {
     <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-phos" />
   );
 }
+
+/* --- Switch / toggle ------------------------------------------------------ */
+export function Switch({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cx(
+        'relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-40',
+        checked ? 'bg-phos' : 'bg-line-strong',
+      )}
+    >
+      <span
+        className={cx(
+          'absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-transform',
+          checked ? 'translate-x-4' : 'translate-x-0.5',
+        )}
+      />
+    </button>
+  );
+}
+
+/* --- Select --------------------------------------------------------------- */
+export function Select({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={cx(
+        'h-10 rounded-lg border border-line bg-bg-inset px-3 text-sm text-ink',
+        'focus:border-phos/50 focus:outline-none focus:ring-1 focus:ring-phos/30',
+        className,
+      )}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/* --- Modal (simple bottom-sheet-ish overlay) ----------------------------- */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-card border border-line bg-bg-raised"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink">
+            ✕
+          </button>
+        </div>
+        <div className="px-5 py-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Field (label + control) --------------------------------------------- */
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return (
+    <div className="mb-3">
+      <label className="mb-1 block text-xs font-medium text-ink-muted">{label}</label>
+      {children}
+      {hint && <p className="mt-1 text-xs text-ink-faint">{hint}</p>}
+    </div>
+  );
+}
+
+/* --- Toast (lightweight, self-dismissing) -------------------------------- */
+export function InlineNote({ tone = 'idle', children }: { tone?: BadgeTone; children: ReactNode }) {
+  const cls =
+    tone === 'ok' ? 'text-phos' : tone === 'bad' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-ink-muted';
+  return <p className={cx('text-xs', cls)}>{children}</p>;
+}
