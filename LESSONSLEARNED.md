@@ -371,7 +371,30 @@ This also has the nice side effect of letting `pm2 reload --update-env` take eff
 **Action:** Pattern in `hud/src/kvs.ts`. Production pairing flow is an open design question for P19/polish.
 
 ### P12 — HUD Smart Idle
-*(filled in on phase completion)*
+
+**2026-05-14 · ✓ went well · I-007 fixed — frame with real container borders, not text box-chars**
+
+**Learning:** The whole Pine/Norton-Commander aesthetic was salvaged by reading the docs' Display section: containers have real `borderWidth` (0–5), `borderColor`, `borderRadius`, `paddingLength` properties. The frame is a *property of the container*, not characters in the text. Redesigned `render.ts` around `TextBox` / `ListBox` specs that compile to bordered container props. Smart Idle = 3 bordered containers (title / list / footer), renders cleanly — no alignment math, no font-width guessing.
+
+**Action:** Rule for the whole HUD: framing/structure = container geometry + borders; text `content` = inner lines only, never box-drawing chars. `render.ts` is the single source for this.
+
+**2026-05-14 · 💡 insight · the native List container does the scroll UX for free**
+
+**Learning:** `ListContainerProperty` + `ListItemContainerProperty` with `isItemSelectBorderEn: 1` gives a native scrollable list — firmware draws the selection highlight and handles scrolling. We supply `itemName: string[]` (max 20 items, 64 chars each) and get a `listEvent` with `currentSelectItemIndex` on tap. Caveat from the docs: lists **cannot be updated in-place** — changing items means a full `rebuildPageContainer`.
+
+**Action:** Smart Idle's suggestions are a capture list container; index→action is cached on the page so `list-select` can route. Pages with changing list content rebuild rather than patch.
+
+**2026-05-14 · ⚠ surprise · two independent network gates — and CORS bites in the simulator**
+
+**Learning:** First `/api/idle-suggestions` fetch failed: `[fetch] Load failed`. The docs spell out two gates: (1) the `app.json` network whitelist — enforced by the Even App on device, **bypassed in the simulator**; (2) browser CORS — enforced *everywhere including the simulator*. So the simulator failure was pure CORS: the Express server sent no `Access-Control-Allow-Origin`.
+
+**Action:** Added CORS middleware to `server/src/app.ts` — open `Access-Control-Allow-Origin: *` (every route is bearer-secret gated, so the origin isn't the auth boundary) + OPTIONS-preflight 204. The whitelist (placeholder + `pack.sh` substitution, I-008) is the other gate — device-only, verify in P19. Mnemonic: whitelist = "allowed to talk at all" (device); CORS = "server said yes" (everywhere).
+
+**2026-05-14 · 💡 insight · one round-trip powers the whole idle screen**
+
+**Learning:** `/api/idle-suggestions` returns both the ranked `suggestions[]` AND a `status` block. The HUD draws title-bar badges + Today line + the list from a single fetch — matters for the <500ms cold-start budget over a BLE-latency link. Battery is the only separate call (`getDeviceInfo()`, local/instant).
+
+**Action:** Server endpoints backing a HUD screen return everything that screen needs in one response. No chatty per-widget fetches.
 
 ### P13 — HUD voice compose pipeline
 *(filled in on phase completion)*

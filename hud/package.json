@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "pack": "evenhub pack app.json dist -o vox.ehpk",
+    "pack": "bash pack.sh",
     "simulate": "evenhub-simulator http://localhost:5173",
     "typecheck": "tsc --noEmit"
   },

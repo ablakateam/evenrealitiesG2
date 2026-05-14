@@ -1,2 +1,4 @@
 vox.ehpk
 *.ehpk
+*.build.json
+.env

@@ -1,67 +1,164 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { renderTextPage, updateText, PAGE_OK } from '../render.js';
+import { showPage, updateText, spread } from '../render.js';
 import { getPairing } from '../kvs.js';
-
-const CONTAINER_ID = 1;
+import { apiGet, HudApiError } from '../api.js';
+import { getBridge } from '../bridge.js';
+import { makeStubPage } from './stub.js';
 
 /**
- * Idle page — the HUD's root.
+ * Smart Idle — the HUD's root screen.
  *
- * P11 placeholder: proves the boot path, the event loop (tap / scroll /
- * double-tap), and pairing detection. Plain left-aligned text — the
- * Pine/Norton-Commander framed visual system is built in P12 using real
- * container borders (text-drawn box chars can't align because box-drawing
- * glyphs and letters have different advance widths in the G2 font — see
- * ISSUES.md I-007).
+ * Anticipates intent instead of being a passive launcher: a server-ranked
+ * suggestion list (unread replies → quiet-streak contacts → compose), a
+ * title bar with live status badges, and a Today line. One round-trip to
+ * /api/idle-suggestions powers the list + the status block; device battery
+ * comes from getDeviceInfo().
+ *
+ * Layout (576x288), three bordered containers:
+ *   id 1  title bar   (text, no capture)
+ *   id 2  suggestions (list, CAPTURE — native scroll + select)
+ *   id 3  footer      (text, no capture)
  */
+
+type IdleAction =
+  | { kind: 'compose' }
+  | { kind: 'compose-to'; contact_id: number; name: string }
+  | { kind: 'reply'; inbox_id: number };
+
+interface IdleSuggestion {
+  id: string;
+  label: string;
+  action: IdleAction;
+}
+
+interface IdleResponse {
+  suggestions: IdleSuggestion[];
+  status: {
+    twilio: boolean;
+    email: boolean;
+    today_sent: number;
+    today_failed: number;
+    unread: number;
+  };
+}
+
+const TITLE_ID = 1;
+const LIST_ID = 2;
+const FOOTER_ID = 3;
+
 export const IdlePage: Page = {
   id: 'idle',
 
   async mount(ctx: PageContext): Promise<void> {
     const paired = (await getPairing()) !== null;
-    const result = await renderTextPage(ctx.bridge, CONTAINER_ID, renderIdle({ paired, hint: null }));
-    if (result !== PAGE_OK) {
-      console.error(`[idle] createStartUpPageContainer failed: ${result}`);
+    if (!paired) {
+      await renderUnpaired(ctx);
+      return;
     }
+
+    // Fetch suggestions + status (one round-trip) and battery in parallel.
+    const [data, battery] = await Promise.all([fetchIdle(), fetchBattery()]);
+    suggestionsCache = data?.suggestions ?? [];
+
+    const items = suggestionsCache.length > 0
+      ? suggestionsCache.map((s) => s.label)
+      : ['Compose (voice)'];
+
+    await showPage(ctx.bridge, {
+      texts: [
+        { id: TITLE_ID, x: 0, y: 0, w: 576, h: 56, capture: false, content: titleBar(data, battery) },
+        { id: FOOTER_ID, x: 0, y: 230, w: 576, h: 58, capture: false, content: footer(data) },
+      ],
+      lists: [{ id: LIST_ID, x: 0, y: 60, w: 576, h: 166, capture: true, items }],
+    });
   },
 
   async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
-    // Root double-tap is handled upstream in main.ts (the exit gate). A
-    // single tap / scroll here echoes into the hint line so the event loop
-    // is verifiable on the simulator + on hardware.
-    let hint: string | null = null;
-    switch (event.kind) {
-      case 'tap':
-        hint = 'tap received';
-        break;
-      case 'scroll-up':
-        hint = 'scroll up';
-        break;
-      case 'scroll-down':
-        hint = 'scroll down';
-        break;
-      case 'foreground-enter':
-        hint = 'foreground';
-        break;
-      default:
-        return;
+    if (event.kind === 'list-select') {
+      const picked = suggestionsCache[event.index];
+      if (!picked) return;
+      await routeToAction(picked.action, ctx);
+      return;
     }
-    const paired = (await getPairing()) !== null;
-    await updateText(ctx.bridge, CONTAINER_ID, renderIdle({ paired, hint }));
+    if (event.kind === 'foreground-enter') {
+      // Returning to the app — refresh suggestions.
+      await IdlePage.mount(ctx);
+    }
+    // scroll within the list is handled natively by the firmware
   },
 };
 
-function renderIdle(opts: { paired: boolean; hint: string | null }): string {
+/** Cache so a list-select event can map index → action. */
+let suggestionsCache: IdleSuggestion[] = [];
+
+async function routeToAction(action: IdleAction, ctx: PageContext): Promise<void> {
+  switch (action.kind) {
+    case 'compose':
+      await ctx.router.push(makeStubPage('compose', 'COMPOSE', 'Voice compose ships in P13.'));
+      break;
+    case 'compose-to':
+      await ctx.router.push(
+        makeStubPage('compose-to', 'COMPOSE', `Message ${action.name} — voice compose ships in P13.`),
+      );
+      break;
+    case 'reply':
+      await ctx.router.push(makeStubPage('reply', 'REPLY', 'Inbox + reply ships in P15.'));
+      break;
+  }
+}
+
+async function fetchIdle(): Promise<IdleResponse | null> {
+  try {
+    return await apiGet<IdleResponse>('/api/idle-suggestions');
+  } catch (err) {
+    if (err instanceof HudApiError) {
+      console.warn(`[idle] suggestions fetch failed: ${err.code}`);
+    }
+    return null;
+  }
+}
+
+async function fetchBattery(): Promise<number | null> {
+  try {
+    const info = await getBridge().getDeviceInfo();
+    return info?.status.batteryLevel ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function titleBar(data: IdleResponse | null, battery: number | null): string {
   const clock = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const lines = [
-    `VOX                              ${clock}`,
-    '',
-    opts.paired ? 'Paired. Ready for voice (P12+).' : 'Not paired — scan the pairing QR.',
-    '',
-    opts.hint ? `> ${opts.hint}` : '',
-    '',
-    '[TAP] test   [SCRL] test   [X2] exit',
-  ];
-  return lines.join('\n');
+  const net = data ? '●' : '○';
+  const twl = data?.status.twilio ? '●' : '○';
+  const mail = data?.status.email ? '●' : '○';
+  const bat = battery != null ? `${battery}%` : '--';
+  return `${spread('VOX', clock, 40)}\nNET ${net}  TWL ${twl}  MAIL ${mail}  BAT ${bat}`;
+}
+
+function footer(data: IdleResponse | null): string {
+  const today = data
+    ? `Today  ${data.status.today_sent} sent · ${data.status.today_failed} failed · ${data.status.unread} unread`
+    : 'Today  --';
+  return `${today}\n[TAP] open   [SCRL] move   [X2] exit`;
+}
+
+async function renderUnpaired(ctx: PageContext): Promise<void> {
+  await showPage(ctx.bridge, {
+    texts: [
+      { id: TITLE_ID, x: 0, y: 0, w: 576, h: 48, capture: false, content: 'VOX' },
+      {
+        id: LIST_ID,
+        x: 0,
+        y: 52,
+        w: 576,
+        h: 178,
+        capture: true,
+        content: '\n  Not paired.\n\n  Open the VOX dashboard on your phone\n  and scan the pairing QR.',
+      },
+      { id: FOOTER_ID, x: 0, y: 234, w: 576, h: 50, capture: false, content: '[X2] exit' },
+    ],
+  });
+  void updateText; // referenced for future in-place title-bar refresh
 }

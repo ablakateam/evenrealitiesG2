@@ -1,149 +1,154 @@
 import {
   CreateStartUpPageContainer,
+  RebuildPageContainer,
   TextContainerProperty,
+  ListContainerProperty,
+  ListItemContainerProperty,
   TextContainerUpgrade,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk';
 
 /**
- * HUD render helpers.
+ * HUD render system.
  *
- * The G2 display is 576×288, 4-bit greyscale (green), single firmware font,
- * ~36 chars wide × ~12 rows. There's no free pixel drawing — a "page" is a
- * set of text/list/image containers whose `content` strings carry the
- * Pine/Norton-Commander framing (single-line box chars, ALL-CAPS labels,
- * bracketed `[TAP]` footer keys).
+ * The G2 display is 576x288, 4-bit greyscale (green), origin top-left. There
+ * is no CSS / DOM — a "page" is up to 12 absolutely-positioned containers
+ * (max 4 image + 8 text/list). Exactly one container must have
+ * `isEventCapture: 1`.
  *
- * Brightness (`borderColor` / implied content brightness) maps to hierarchy:
- *   15 cursor / primary · 13 body · 10 labels · 6 hints · 4 borders.
+ * The framed Pine/Norton-Commander look comes from each container's REAL
+ * `borderWidth` / `borderColor` — NOT box-drawing chars in text (I-007: the
+ * G2 font renders box glyphs and letters at different advance widths, so a
+ * text-drawn frame can't align). Text `content` carries only inner lines.
  */
 export const SCREEN_W = 576;
 export const SCREEN_H = 288;
 
-export const Brightness = {
+/** 4-bit greyscale levels (0 = off, 15 = bright green) mapped to UI hierarchy. */
+export const Bright = {
   cursor: 15,
   body: 13,
   label: 10,
   hint: 6,
-  border: 4,
+  border: 6,
 } as const;
 
-/** Result code from createStartUpPageContainer (0 = success). */
+/** createStartUpPageContainer result codes. */
 export const PAGE_OK = 0;
 
-/**
- * Build a single full-screen text container. Most VOX pages are one text
- * container whose `content` carries the whole framed layout; richer pages
- * (tone picker, recipient list) add a ListContainer — handled per-page.
- */
-export function fullScreenText(opts: {
-  containerID: number;
+/** A text container spec. */
+export interface TextBox {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
   content: string;
-  /** Exactly one container per page must capture events. */
-  isEventCapture?: boolean;
+  capture?: boolean;
+  border?: number; // borderWidth 0-5, default 1
+  padding?: number; // 0-32, default 6
+}
+
+/** A list container spec. */
+export interface ListBox {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  items: string[]; // max 20, each max 64 chars
+  capture?: boolean;
+  border?: number;
   padding?: number;
-}): TextContainerProperty {
+}
+
+function textProp(box: TextBox): TextContainerProperty {
   return new TextContainerProperty({
-    xPosition: 0,
-    yPosition: 0,
-    width: SCREEN_W,
-    height: SCREEN_H,
-    borderWidth: 0,
-    borderColor: Brightness.border,
-    paddingLength: opts.padding ?? 8,
-    containerID: opts.containerID,
-    containerName: `c${opts.containerID}`,
-    content: opts.content,
-    isEventCapture: opts.isEventCapture ? 1 : 0,
+    xPosition: box.x,
+    yPosition: box.y,
+    width: box.w,
+    height: box.h,
+    borderWidth: box.border ?? 1,
+    borderColor: Bright.border,
+    borderRadius: 0,
+    paddingLength: box.padding ?? 6,
+    containerID: box.id,
+    containerName: `c${box.id}`,
+    content: box.content,
+    isEventCapture: box.capture ? 1 : 0,
   });
 }
 
-/** Create a page from a single full-screen text container. */
-export async function renderTextPage(
-  bridge: EvenAppBridge,
-  containerID: number,
-  content: string,
-): Promise<number> {
-  return bridge.createStartUpPageContainer(
-    new CreateStartUpPageContainer({
-      containerTotalNum: 1,
-      textObject: [fullScreenText({ containerID, content, isEventCapture: true })],
+function listProp(box: ListBox): ListContainerProperty {
+  // List caps: max 20 items, 64 chars each. Clip defensively.
+  const items = box.items.slice(0, 20).map((s) => (s.length > 64 ? s.slice(0, 64) : s));
+  return new ListContainerProperty({
+    xPosition: box.x,
+    yPosition: box.y,
+    width: box.w,
+    height: box.h,
+    borderWidth: box.border ?? 1,
+    borderColor: Bright.border,
+    borderRadius: 0,
+    paddingLength: box.padding ?? 6,
+    containerID: box.id,
+    containerName: `c${box.id}`,
+    isEventCapture: box.capture ? 1 : 0,
+    itemContainer: new ListItemContainerProperty({
+      itemCount: items.length,
+      itemWidth: box.w - (box.padding ?? 6) * 2,
+      isItemSelectBorderEn: 1,
+      itemName: items,
     }),
-  );
+  });
 }
 
-/** Flicker-free update of a text container's content. */
-export async function updateText(
-  bridge: EvenAppBridge,
-  containerID: number,
-  content: string,
-): Promise<boolean> {
-  return bridge.textContainerUpgrade(
-    new TextContainerUpgrade({ containerID, containerName: `c${containerID}`, content }),
-  );
-}
-
-/* --- Pine-frame text composition (PROVISIONAL — see ISSUES.md I-007) ------
- *
- * These draw the Pine/Norton-Commander frame using box-drawing characters in
- * the text content. Simulator testing in P11 revealed the G2 font renders
- * box-drawing glyphs and letters at DIFFERENT advance widths, so a
- * fixed-char-count frame can't keep its right edge aligned (a row of dashes
- * spans ~full width while a row of letters spans ~half).
- *
- * P12 redesigns the visual system to use the SDK's real container
- * `borderWidth` / `borderColor` for framing, with text content carrying only
- * the inner lines. Until then these helpers are kept for reference but the
- * pages use plain left-aligned text.
+/**
+ * The first page of the app must use createStartUpPageContainer; every page
+ * after that uses rebuildPageContainer. We track that here so callers just
+ * call `showPage()` and don't have to care.
  */
-const WIDTH = 37; // provisional inner char width — not reliable, see above
+let firstPageShown = false;
 
-/** Top border with the page title baked in: `┌─[ TITLE ]──────── right ─┐` */
-export function frameTop(title: string, right = ''): string {
-  const left = `┌─[ ${title} ]`;
-  const rightPart = right ? `${right} ─┐` : '─┐';
-  const fill = Math.max(0, WIDTH - left.length - rightPart.length);
-  return left + '─'.repeat(fill) + rightPart;
+export interface PageSpec {
+  texts?: TextBox[];
+  lists?: ListBox[];
 }
 
-/** A horizontal divider row: `├───────────────┤` */
-export function frameDivider(label = ''): string {
-  if (!label) return '├' + '─'.repeat(WIDTH - 2) + '┤';
-  const left = `├─[ ${label} ]`;
-  const fill = Math.max(0, WIDTH - left.length - 1);
-  return left + '─'.repeat(fill) + '┤';
+/** Render a page. Picks createStartUp vs rebuild automatically. */
+export async function showPage(bridge: EvenAppBridge, spec: PageSpec): Promise<boolean> {
+  const textObject = (spec.texts ?? []).map(textProp);
+  const listObject = (spec.lists ?? []).map(listProp);
+  const total = textObject.length + listObject.length;
+
+  if (!firstPageShown) {
+    const result = await bridge.createStartUpPageContainer(
+      new CreateStartUpPageContainer({ containerTotalNum: total, textObject, listObject }),
+    );
+    firstPageShown = true;
+    if (result !== PAGE_OK) {
+      console.error(`[render] createStartUpPageContainer failed: ${result}`);
+      return false;
+    }
+    return true;
+  }
+
+  return bridge.rebuildPageContainer(
+    new RebuildPageContainer({ containerTotalNum: total, textObject, listObject }),
+  );
 }
 
-/** Bottom border: `└───────────────┘` */
-export function frameBottom(): string {
-  return '└' + '─'.repeat(WIDTH - 2) + '┘';
+/** Flicker-free in-place update of a single text container's content. */
+export async function updateText(bridge: EvenAppBridge, id: number, content: string): Promise<boolean> {
+  return bridge.textContainerUpgrade(
+    new TextContainerUpgrade({ containerID: id, containerName: `c${id}`, content }),
+  );
 }
 
-/** A content row inside the frame: `│  text...        │` */
-export function frameRow(text = ''): string {
-  const inner = WIDTH - 4; // 2 for borders, 2 for padding
-  const clipped = text.length > inner ? text.slice(0, inner) : text;
-  return '│ ' + clipped.padEnd(inner) + ' │';
-}
+/* --- Small text helpers (no box-drawing — just spacing) ------------------- */
 
-/** The standard footer with bracketed action keys. */
-export function frameFooter(keys: string): string {
-  return frameRow(keys);
-}
-
-/** Compose a full framed page from a title + body rows + footer. */
-export function framedPage(opts: {
-  title: string;
-  titleRight?: string;
-  rows: string[];
-  footer: string;
-}): string {
-  const lines = [
-    frameTop(opts.title, opts.titleRight),
-    ...opts.rows.map(frameRow),
-    frameDivider(),
-    frameFooter(opts.footer),
-    frameBottom(),
-  ];
-  return lines.join('\n');
+/** Pad `left` and `right` onto one line ~`width` chars wide (best-effort). */
+export function spread(left: string, right: string, width = 40): string {
+  const gap = Math.max(1, width - left.length - right.length);
+  return left + ' '.repeat(gap) + right;
 }
