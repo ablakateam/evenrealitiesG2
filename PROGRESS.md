@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P16 ✓ complete → ready for P17 |
-| **% complete (overall)** | 85% (P0–P16 done) |
+| **Current phase** | P17 ✓ complete → ready for P18 |
+| **% complete (overall)** | 90% (P0–P17 done) |
 | **Last update** | 2026-05-15 |
-| **Active session** | P16 closed — `/api/voice-command` classifies any utterance into one of 8 intent classes (compose · reply · navigate · search · save_contact · settings · cancel · unknown) using the same LLM provider as compose; HUD has a new `VoicePage` reachable via the new `> Speak (voice)` shortcut at the top of Idle that records → STT → classifier → dispatches. Long-press is impossible on the current SDK (R1 confirmed: only CLICK_EVENT / DOUBLE_CLICK_EVENT, no press/release timing), so the explicit Speak shortcut replaces it. Curl-verified all 5 critical intents return correct structured actions in <1s. |
+| **Active session** | P17 closed — first-run `VoiceCuePage` (one-shot KVS-gated tutorial card primes the voice grammar before users land on Idle), inbox sender display switched from local-part to full address (`team@newsletter.artli~` instead of just "team"), reply title shows full from_address, voice error copy is empathetic ("Didn't quite catch that — try again or get more specific"), Sent screen auto-returns to Idle after 4 s. Mount-retry tick cleanup hardened across Compose + Voice pages. |
 | **Blockers** | — |
-| **Next milestone** | P17 — Polish (microcopy, empty/error states, first-run voice cue, brightness microinteractions) |
+| **Next milestone** | P18 — Hardening (offline outbox retry, rate limits, telemetry, foreground-exit pauses mic + sse) |
 
 ---
 
@@ -36,7 +36,7 @@
 - [x] **P14** HUD tone picker + send *(complete 2026-05-15 — shared `draft.ts` module holds the editable intent + variants between Confirm and the pickers; four real picker pages (`recipient-picker.ts`, `channel-picker.ts`, `tone-picker.ts`, `subject-prompt.ts`) push themselves on the router stack and mutate the draft; `ConfirmPage` refactored from a factory to a singleton that reads from the draft on every mount; SEND row triggers `sendDraft` which validates, posts to /api/sms or /api/email with idempotency, and routes to a channel-aware `Sent` page (`->` glyph for SMS, `>>>` for email, copy "Off to <name>" / "Off to <name>'s inbox"); compose.ts onEvent now handles both `tap` and `list-select` because its capture container is a list. **End-to-end sim test sent a real SMS to Dan's number via Twilio — history row #4, status=delivered.** Voice → confirm → send → delivered round-trip now ships.)*
 - [x] **P15** HUD inbox + reply *(complete 2026-05-15 — `InboxPage` paginated list view, `InboxReadPage` factory for single-message body display with native scroll + reply action (marks read via /api/inbox/:id/read on mount); `draft.ts` extended with `replyContext` + `locked` flags + a `stagePrefillForReply` slot consumed on the next `setDraftFromCompose` call so ComposePage stays a single page; `ConfirmPage` honours the locks (cursor on locked row is a no-op) and shows "Reply to <sender>" as the title; idle's reply suggestions wired to fetch the inbox item and push the read view. Sim-verified: top idle reply → InboxRead → tap reply → record → ConfirmPage shows `=TO cs`/`=VIA Email` locked with ***confidence + "Reply to cs" title.)*
 - [x] **P16** Voice-anywhere *(complete 2026-05-15 — server `/api/voice-command` classifier route + `buildVoiceCommandSystemPrompt` (compose·reply·navigate·search·save_contact·settings·cancel·unknown), HUD `VoicePage` (record → STT → classifier → dispatch), Idle has new `> Speak (voice)` + `> Open inbox` shortcuts at top; compose-intent dispatch re-runs `/api/compose` with the transcription and routes through Confirm; save_contact intent POSTs `/api/contacts` and shows a success stub; navigate intent calls `router.go(page)`. Long-press temple gesture verified impossible on the current SDK (Risk R1) — explicit Speak shortcut replaces it. Curl-verified: 5 critical intents return structured actions in <1s.)*
-- [ ] **P17** Polish (microcopy + empty/error states + first-run cue)
+- [x] **P17** Polish (microcopy + empty/error states + first-run cue) *(complete 2026-05-15 — first-run `VoiceCuePage` (KVS `seen_voice_cue` flag gates it; teaches the "> Speak" pattern with concrete example utterances), Inbox sender row shows the full from_address instead of just the local part, `InboxReadPage.senderName` returns the full from_address so reply titles read meaningfully, VoicePage error copy reworked to be warmer + suggest a concrete next step, SentPage auto-returns to Idle after 4 s (footer reads "back in 4s") with the timer cleared on tap / unmount, Compose + Voice `mount()` paths defensively clear any prior tick before scheduling a new one so retries don't leak timers.)*
 - [ ] **P18** Hardening
 - [ ] **P19** Hardware testing
 - [ ] **P20** Even Hub submission

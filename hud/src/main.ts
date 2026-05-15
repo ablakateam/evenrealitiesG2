@@ -1,7 +1,8 @@
 import { initBridge, normalizeEvent } from './bridge.js';
 import { Router } from './router.js';
 import { IdlePage } from './pages/idle.js';
-import { bootstrapPairingFromUrl } from './kvs.js';
+import { VoiceCuePage } from './pages/voice-cue.js';
+import { bootstrapPairingFromUrl, hasSeenVoiceCue, getPairing } from './kvs.js';
 
 /**
  * VOX HUD entry point.
@@ -45,7 +46,12 @@ async function main(): Promise<void> {
   });
 
   // --- Mount the root page ------------------------------------------------
-  await router.go(IdlePage);
+  // First-run users see the voice cue card once before landing on Idle.
+  // We only show it once paired — there's no point teaching voice when
+  // the HUD can't talk to the server yet.
+  const paired = (await getPairing()) !== null;
+  const seenCue = await hasSeenVoiceCue();
+  await router.go(paired && !seenCue ? VoiceCuePage : IdlePage);
 }
 
 main().catch((err) => {

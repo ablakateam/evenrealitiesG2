@@ -76,8 +76,9 @@ export function makeInboxReadPage(item: InboxItem): Page {
 }
 
 function senderName(item: InboxItem): string {
-  // Local part of the address as a friendly fallback.
-  return item.from_address.split('@')[0] ?? item.from_address;
+  // Full address — works for both SMS (E.164 phone) and email. Keeps the
+  // reply Confirm title meaningful instead of just the local part.
+  return item.from_address;
 }
 
 function bodyToLines(item: InboxItem): string[] {

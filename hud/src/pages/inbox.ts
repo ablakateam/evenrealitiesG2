@@ -82,11 +82,13 @@ export const InboxPage: Page = {
 };
 
 function formatRow(item: InboxItem): string {
-  // 32-char budget. Layout: "sender 20ch  HH:mm *"
-  const sender = clip(item.from_address.split('@')[0]!, 18);
+  // 32-char budget: sender(22) when(4) space unread(1) = 28 visible chars.
+  // Use the full from_address — it scans better than just the local part
+  // (a bare "support" is useless; "support@<service>" is meaningful).
+  const sender = clip(item.from_address, 22);
   const unread = item.read_at ? ' ' : '*';
   const when = formatWhen(item.received_at);
-  return `${sender.padEnd(18)} ${when} ${unread}`;
+  return `${sender.padEnd(22)}${when} ${unread}`;
 }
 
 function formatWhen(iso: string): string {

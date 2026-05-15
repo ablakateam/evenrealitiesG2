@@ -123,7 +123,7 @@ async function render(ctx: PageContext): Promise<void> {
     footer = '[TAP] stop   [X2] cancel';
   } else if (state === 'thinking') {
     title = 'thinking';
-    items = ['one moment...'];
+    items = ['picking the right words...'];
     footer = '[X2] cancel';
   } else if (state === 'done') {
     title = 'done';
@@ -131,7 +131,7 @@ async function render(ctx: PageContext): Promise<void> {
     footer = '[X2] back';
   } else {
     title = 'Hmm.';
-    items = ["Didn't catch that.", errorMsg || 'try again?'];
+    items = ["Didn't quite catch that.", 'Try again or get more specific.'];
     footer = '[TAP] retry  [X2] back';
   }
   await showPage(ctx.bridge, {
