@@ -431,7 +431,30 @@ Symptom that masked this for an hour: Smart Idle → tap Compose → recording s
 **Action:** Lived with it for now — the actual production flow is fine because real users don't suspend mid-recording for hours. If it becomes a problem, switch to a monotonic-clock derivation that ignores wall-clock jumps (e.g., increment a counter inside the tick rather than reading `Date.now()`).
 
 ### P14 — HUD tone picker + send
-*(filled in on phase completion)*
+
+**2026-05-15 · ⚠ surprise · a list-capture container fires `list-select`, not `tap`**
+
+**Learning:** P13 ended with ComposePage being a single full-screen text container with `isEventCapture: 1`, and its `onEvent` handler only checked `event.kind === 'tap'`. When P14 converted Compose to the same 3-container shape as the rest of the app (so c2 is a list), tap-to-stop stopped working — the firmware now emits a `listEvent` (no `currentSelectItemIndex`, the list has no useful items to pick) which `bridge.ts` normalizes to `kind: 'list-select'`. The user's tap landed but the page ignored it; the sim sat on the recording screen forever.
+
+**Action:** Compose's `onEvent` now handles both `tap` and `list-select` as "user wants to stop." Same applies to any page whose capture container is a list: treat list-select as a generic tap when the list items aren't menu choices.
+
+**2026-05-15 · 💡 insight · `confirm = factory(result)` → `confirm = singleton(reads draft)` is a much better pattern**
+
+**Learning:** P13's `makeConfirmPage(result)` captured the result via closure. That worked for a single-shot render, but the moment any picker needed to mutate the parsed intent (recipient, tone, subject, channel), we'd have to thread state through the closure — and rebuilding the closure means re-creating the Page identity, which breaks `router.push(p)`-stack ergonomics.
+
+**Action:** A singleton `ConfirmPage` that reads from a shared `draft` module on every `mount()` is the cleaner pattern. Pickers push themselves on the stack, mutate the draft, and `router.back()` re-mounts Confirm — which redraws against the new draft state. The draft module owns the lifecycle (`setDraftFromCompose` on entry, `clearDraft` after a successful send). This pattern generalizes to any "edit a multi-field intent across multiple sub-pages" flow.
+
+**2026-05-15 · ✓ went well · idempotency-by-client_uuid pays for itself the moment a retry happens**
+
+**Learning:** Both `/api/sms` and `/api/email` accept an optional `client_uuid` and treat a duplicate UUID as idempotent — return the existing outbox row instead of re-sending. P14's `sendDraft` generates one with `crypto.randomUUID()` per send. Saved us during P14's debug loop: when the webview locked up mid-send and we re-ran the flow, a stale request never raced with the new one to double-send.
+
+**Action:** Continue this pattern everywhere outbound — every state-mutating endpoint should take an idempotency key from the client. Add it to `/api/sms` and `/api/email` headers when bulk-sending lands in P16+.
+
+**2026-05-15 · 💡 insight · whisper on raw PCM takes 6–8 s, not 2 s**
+
+**Learning:** P13's "~2 s round-trip" estimate was based on the JSON transcription path (no STT — the transcription was already in the body). When P14 ran the real audio path on the sim (88 KB of PCM = ~5 s of mic input), `/api/compose` returned in 6–8 s. My 5-second sleep timeout in the sim driver wasn't enough, which made the page look frozen.
+
+**Action:** When automating end-to-end tests, the budget for real-audio compose is **at least 10 s**, not 5. For sim flow tests, prefer the JSON-transcription path (set fields explicitly) — saves 6 s per cycle and keeps Whisper out of the test inputs.
 
 ### P15 — HUD inbox + reply
 *(filled in on phase completion)*

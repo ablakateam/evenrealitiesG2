@@ -3,7 +3,9 @@ import type { NormalizedEvent } from '../bridge.js';
 import { showPage } from '../render.js';
 import { AudioRecorder, formatElapsed } from '../audio.js';
 import { hudApi, apiPostAudio, HudApiError, type ComposeResult } from '../api.js';
-import { makeConfirmPage } from './confirm.js';
+import { setDraftFromCompose } from '../draft.js';
+import { ConfirmPage } from './confirm.js';
+import { makeStubPage } from './stub.js';
 
 /**
  * Compose page — capture voice, transcribe, hand off to the confirm screen.
@@ -92,7 +94,9 @@ export const ComposePage: Page = {
       recorder.addChunk(event.pcm);
       return;
     }
-    if (event.kind === 'tap') {
+    // The recording-state list is event-capture, so taps arrive as
+    // 'list-select' (no useful index). Either kind = "tap" on this page.
+    if (event.kind === 'tap' || event.kind === 'list-select') {
       if (state === 'recording') {
         await stopAndTranscribe(ctx);
       } else if (state === 'error') {
@@ -124,7 +128,14 @@ async function stopAndTranscribe(ctx: PageContext): Promise<void> {
 
   try {
     const result = await transcribe();
-    await ctx.router.go(makeConfirmPage(result));
+    const draft = setDraftFromCompose(result);
+    if (!draft) {
+      await ctx.router.go(
+        makeStubPage('confirm-error', 'Hmm.', `Couldn't read that as a message.\n"${result.transcription.slice(0, 80)}"`),
+      );
+      return;
+    }
+    await ctx.router.go(ConfirmPage);
   } catch (err) {
     console.error('[compose] transcribe failed:', err);
     state = 'error';
@@ -136,8 +147,6 @@ async function stopAndTranscribe(ctx: PageContext): Promise<void> {
 
 async function transcribe(): Promise<ComposeResult> {
   if (recorder.isEmpty) {
-    // Dev / headless-simulator fallback — no mic frames were captured, so run
-    // the pipeline via the JSON transcription path with a sample utterance.
     console.warn('[compose] no audio captured — using sim fallback transcription');
     return hudApi<ComposeResult>('/api/compose', {
       method: 'POST',

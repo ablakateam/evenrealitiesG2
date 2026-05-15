@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P13 ✓ complete → ready for P14 |
-| **% complete (overall)** | 70% (P0–P13 done) |
-| **Last update** | 2026-05-14 |
-| **Active session** | P13 closed — full voice compose pipeline live on the simulator: Idle → tap Compose → recording (3-container layout) → auto-stop → /api/compose round-trip → confirm page renders atoms (TO/VIA/TONE/MSG) with confidence dots + native list cursor + stub routing on tap. Two non-obvious G2 quirks documented in LESSONSLEARNED: rebuildPageContainer can't expand a previously-shrunk container set, and list items >~32 chars cause silent rebuild failure. |
+| **Current phase** | P14 ✓ complete → ready for P15 |
+| **% complete (overall)** | 75% (P0–P14 done) |
+| **Last update** | 2026-05-15 |
+| **Active session** | P14 closed — every Confirm atom row is wired to a real picker (recipient / channel / tone / subject) backed by a shared `draft` module, and tapping SEND posts to /api/sms or /api/email and routes to a channel-aware Sent screen. End-to-end sim test sent a real SMS to the Dan contact via Twilio (history #4, status=delivered). |
 | **Blockers** | — |
-| **Next milestone** | P14 — HUD tone picker + send (replace P13 confirm stubs with real recipient/tone pickers + outbound send) |
+| **Next milestone** | P15 — HUD inbox + reply (banner in title bar, inbox list, read view, reply flow with TO locked) |
 
 ---
 
@@ -33,7 +33,8 @@
 - [x] **P11** HUD scaffold *(complete 2026-05-14 — `hud/` from the official `evenhub-templates/minimal`; bridge.ts (event normalization across sysEvent/textEvent/listEvent/audioEvent, CLICK_EVENT-as-undefined coalesced), kvs.ts (bridge.setLocalStorage wrapper + pairing store + URL bootstrap), api.ts (bearer-auth client to the VOX server), router.ts (page state machine + back stack), render.ts (container helpers + brightness palette), Idle placeholder page; root double-tap → `shutDownPageContainer(1)` exit gate enforced in main.ts; verified on `evenhub-simulator` via its :9898 automation API — render, tap→CLICK_EVENT→textContainerUpgrade, scroll, double-tap exit all confirmed; `vox.ehpk` packs (31.7 KB). Discovered I-007: text-drawn box frames can't align on the G2 font.)*
 - [x] **P12** HUD Smart Idle *(complete 2026-05-14 — `/api/idle-suggestions` ranks unread-replies → quiet-streak contacts → compose + a status block; HUD render system redesigned to frame with real container `borderWidth` (I-007 resolved); Smart Idle page = title-bar + native scrollable suggestion list + footer, 3 bordered containers; status badges (NET/TWL/MAIL/BAT) live; tap routes to per-action stub pages; server CORS middleware added; verified on the simulator — renders cleanly, list selection highlight works, tap → stub routing confirmed; 95/95 server tests pass)*
 - [x] **P13** HUD voice compose pipeline *(complete 2026-05-14 — `AudioRecorder` (RMS meter + silence/max auto-stop, fallback for sim's empty mic buffer), `ComposePage` (recording/transcribing/error visual states, awaited mic control to avoid bridge races), `ConfirmPage` (atom rows TO/VIA/TONE/MSG with `*..` confidence dots, SUBJECT row for email intent, native list cursor + stub routing on each atom tap), `render.ts` HMR-safe createStartUp fallback + rebuild retry; entire app converted to a fixed 3-container shape (title-text c1 / list-c2 capture / footer-text c3) after discovering `rebuildPageContainer` can't reintroduce dropped container IDs; verified end-to-end on the simulator — Idle → scroll → tap → record → tap-stop → /api/compose round-trip → confirm renders atoms → TO-row tap → P14 stub. Two new G2 SDK quirks logged in LESSONSLEARNED §P13.)*
-- [ ] **P14** HUD tone picker + send
+- [x] **P14** HUD tone picker + send *(complete 2026-05-15 — shared `draft.ts` module holds the editable intent + variants between Confirm and the pickers; four real picker pages (`recipient-picker.ts`, `channel-picker.ts`, `tone-picker.ts`, `subject-prompt.ts`) push themselves on the router stack and mutate the draft; `ConfirmPage` refactored from a factory to a singleton that reads from the draft on every mount; SEND row triggers `sendDraft` which validates, posts to /api/sms or /api/email with idempotency, and routes to a channel-aware `Sent` page (`->` glyph for SMS, `>>>` for email, copy "Off to <name>" / "Off to <name>'s inbox"); compose.ts onEvent now handles both `tap` and `list-select` because its capture container is a list. **End-to-end sim test sent a real SMS to Dan's number via Twilio — history row #4, status=delivered.** Voice → confirm → send → delivered round-trip now ships.)*
+- [ ] **P15** HUD inbox + reply
 - [ ] **P15** HUD inbox + reply
 - [ ] **P16** Voice-anywhere
 - [ ] **P17** Polish

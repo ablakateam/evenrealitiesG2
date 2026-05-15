@@ -1,156 +1,150 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
 import { showPage } from '../render.js';
-import type { ComposeResult, IntentResult, VariantResult, Tone } from '../api.js';
+import { getDraft, getBodyText, type ComposeDraft } from '../draft.js';
+import { RecipientPickerPage } from './recipient-picker.js';
+import { ChannelPickerPage } from './channel-picker.js';
+import { TonePickerPage } from './tone-picker.js';
+import { SubjectPromptPage } from './subject-prompt.js';
+import { ComposePage } from './compose.js';
+import { sendDraft } from './send.js';
 import { makeStubPage } from './stub.js';
 
 /**
  * Confirm page — the parsed-intent review screen.
  *
- * Renders the /api/compose result as a list of atom rows the wearer scans +
- * fixes before sending: TO / VIA / TONE / MSG (plus SUBJECT for email). Each
- * row carries a confidence dot (●●● sure / ●●○ likely / ●○○ guess) so the
- * eye lands on the uncertain bits first. A final "SEND" row sits at the
- * bottom of the list.
+ * Singleton: reads from the shared compose-draft module on every mount, so
+ * after a picker mutates the draft and pops back, the screen reflects the
+ * edit. Each atom row (TO / VIA / TONE / MSG / SUBJECT for email) routes a
+ * tap to its picker. The SEND row triggers the outbound call.
  *
- * The native list container IS the cursor — firmware highlights the selected
- * row, `list-select` tells us which atom was tapped. P13 routes taps to stub
- * sub-flows; P14 wires the real recipient/tone pickers + the send.
+ * Layout: same 3-container shape as the rest of the app (title-text c1,
+ * list c2 capture, footer-text c3) — see LESSONSLEARNED §P13 for why.
  */
 
 const TITLE_ID = 1;
 const LIST_ID = 2;
 const FOOTER_ID = 3;
 
-const DEFAULT_TONE: Tone = 'casual';
+type AtomKey = 'to' | 'via' | 'subject' | 'tone' | 'msg' | 'send';
 
 interface Atom {
-  key: 'to' | 'via' | 'subject' | 'tone' | 'msg' | 'send';
+  key: AtomKey;
   label: string;
 }
 
-export function makeConfirmPage(result: ComposeResult): Page {
-  // Guard: intent parse can fail — show a clean error rather than crash.
-  if ('error' in result.intent) {
-    return makeStubPage(
-      'confirm-error',
-      'Hmm.',
-      `Couldn't read that as a message.\n  "${result.transcription.slice(0, 80)}"`,
-    );
-  }
+// Build atoms list dynamically — kept in module state so onEvent can map
+// the list-select index back to the atom it represents.
+let atoms: Atom[] = [];
 
-  const intent = result.intent;
-  const isEmail = intent.channel === 'email';
-  const tone = pickTone(result.variants, DEFAULT_TONE);
-  const bodyText = tone.text || intent.body;
+export const ConfirmPage: Page = {
+  id: 'confirm',
 
-  // Build the atom rows in display order.
-  const atoms: Atom[] = [];
-  atoms.push({ key: 'to', label: row('TO', intent.recipient_name ?? '(pick recipient)', intent.confidence.recipient) });
-  if (isEmail) {
-    atoms.push({ key: 'subject', label: row('SUBJ', intent.subject ?? '(none)', intent.subject ? 3 : 1) });
-  }
-  atoms.push({ key: 'via', label: row('VIA', channelLabel(intent.channel), intent.confidence.channel) });
-  atoms.push({ key: 'tone', label: row('TONE', toneLabel(tone.tone), 2) });
-  atoms.push({ key: 'msg', label: row(isEmail ? 'BODY' : 'MSG', clip(bodyText, 38), intent.confidence.body) });
-  atoms.push({ key: 'send', label: '--  SEND  --' });
+  async mount(ctx: PageContext): Promise<void> {
+    const draft = getDraft();
+    if (!draft) {
+      // Defensive: confirm reached without a draft — drop to a stub.
+      await ctx.router.go(makeStubPage('confirm-empty', 'Hmm.', "Nothing to confirm — start a new compose."));
+      return;
+    }
 
-  return {
-    id: 'confirm',
+    atoms = buildAtoms(draft);
+    const isEmail = draft.channel === 'email';
+    await showPage(ctx.bridge, {
+      texts: [
+        { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: isEmail ? 'Send this email?' : 'Send this?' },
+        { id: FOOTER_ID, x: 0, y: 236, w: 576, h: 48, capture: false, content: `[SCRL] move  [TAP] pick  [X2] cancel` },
+      ],
+      lists: [{ id: LIST_ID, x: 0, y: 48, w: 576, h: 184, capture: true, items: atoms.map((a) => a.label) }],
+    });
+  },
 
-    async mount(ctx: PageContext): Promise<void> {
-      await showPage(ctx.bridge, {
-        texts: [
-          {
-            id: TITLE_ID,
-            x: 0,
-            y: 0,
-            w: 576,
-            h: 44,
-            capture: false,
-            content: isEmail ? 'Send this email?' : 'Send this?',
-          },
-          {
-            id: FOOTER_ID,
-            x: 0,
-            y: 236,
-            w: 576,
-            h: 48,
-            capture: false,
-            content: `lang ${intent.language}   ·   [SCRL] move   [TAP] pick   [X2] cancel`,
-          },
-        ],
-        lists: [{ id: LIST_ID, x: 0, y: 48, w: 576, h: 184, capture: true, items: atoms.map((a) => a.label) }],
-      });
-    },
-
-    async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
-      if (event.kind !== 'list-select') return;
-      const atom = atoms[event.index];
-      if (!atom) return;
-      // P14 wires the real recipient picker, channel toggle, tone picker, and
-      // the actual send. For P13 each lands on an honest stub.
-      switch (atom.key) {
-        case 'send':
-          await ctx.router.push(makeStubPage('send', 'SEND', 'Sending ships in P14 (tone picker + send).'));
-          break;
-        case 'to':
-          await ctx.router.push(makeStubPage('pick-to', 'TO', 'Recipient picker ships in P14.'));
-          break;
-        case 'via':
-          await ctx.router.push(makeStubPage('pick-via', 'VIA', 'Channel toggle ships in P14.'));
-          break;
-        case 'subject':
-          await ctx.router.push(makeStubPage('pick-subject', 'SUBJECT', 'Subject prompt ships in P14.'));
-          break;
-        case 'tone':
-          await ctx.router.push(makeStubPage('pick-tone', 'TONE', 'Tone picker ships in P14.'));
-          break;
-        case 'msg':
-          await ctx.router.push(makeStubPage('redo-msg', 'MSG', 'Re-record ships in P14.'));
-          break;
-      }
-    },
-  };
-}
+  async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
+    if (event.kind !== 'list-select') return;
+    const atom = atoms[event.index];
+    if (!atom) return;
+    switch (atom.key) {
+      case 'to':
+        await ctx.router.push(RecipientPickerPage);
+        break;
+      case 'via':
+        await ctx.router.push(ChannelPickerPage);
+        break;
+      case 'subject':
+        await ctx.router.push(SubjectPromptPage);
+        break;
+      case 'tone':
+        await ctx.router.push(TonePickerPage);
+        break;
+      case 'msg':
+        // Re-record — push compose page; on its completion it'll set a new
+        // draft and replace the current page with ConfirmPage again.
+        await ctx.router.push(ComposePage);
+        break;
+      case 'send':
+        await sendDraft(ctx);
+        break;
+    }
+  },
+};
 
 /* --- helpers ------------------------------------------------------------- */
 
-function pickTone(variants: VariantResult[], preferred: Tone): VariantResult {
-  return (
-    variants.find((v) => v.tone === preferred && !v.error && v.text) ??
-    variants.find((v) => v.tone === 'original' && v.text) ??
-    variants.find((v) => v.text) ??
-    { tone: 'original', text: '', latency_ms: 0 }
-  );
+function buildAtoms(draft: ComposeDraft): Atom[] {
+  const isEmail = draft.channel === 'email';
+  const out: Atom[] = [];
+  out.push({
+    key: 'to',
+    label: row('TO', draft.recipient.name ?? '(pick)', draft.baseIntent.confidence.recipient),
+  });
+  if (isEmail) {
+    out.push({
+      key: 'subject',
+      label: row('SUBJ', draft.subject ?? '(none)', draft.subject ? 3 : 1),
+    });
+  }
+  out.push({ key: 'via', label: row('VIA', channelLabel(draft.channel), draft.baseIntent.confidence.channel) });
+  out.push({ key: 'tone', label: row('TONE', toneLabel(draft.tone), 2) });
+  out.push({
+    key: 'msg',
+    label: row(isEmail ? 'BODY' : 'MSG', clip(getBodyText(draft), 22), draft.baseIntent.confidence.body),
+  });
+  // Send row uses no dots — its readiness is reflected by whether everything
+  // above resolved (TO present, channel reachable).
+  const ready = isReady(draft);
+  out.push({ key: 'send', label: ready ? '--  SEND  --' : '--  SEND (fix above) --' });
+  return out;
 }
 
-/** One atom row: `LABEL  value  ***` (label padded, dots inline, short). */
+function isReady(draft: ComposeDraft): boolean {
+  if (!draft.recipient.id) return false;
+  if (draft.channel === 'sms' && !draft.recipient.phone) return false;
+  if (draft.channel === 'email' && !draft.recipient.email) return false;
+  return true;
+}
+
+/** One atom row: `LABEL value___________________ ***` — capped at 32 chars. */
 function row(label: string, value: string, confidence: 1 | 2 | 3): string {
-  // Keep rows ≤32 chars — longer rows seem to make the firmware reject the
-  // list rebuild silently. ASCII-only for the same reason.
   const dots = confidence === 3 ? '***' : confidence === 2 ? '**.' : '*..';
   const v = value.length > 22 ? value.slice(0, 21) + '~' : value;
   return `${label.padEnd(5)} ${v.padEnd(22)} ${dots}`;
 }
 
-function channelLabel(channel: IntentResult['channel']): string {
+function channelLabel(channel: ComposeDraft['channel']): string {
   switch (channel) {
     case 'sms':
       return 'SMS';
     case 'email':
       return 'Email';
     case 'both':
-      return 'SMS + Email';
-    default:
-      return '(ambiguous — pick)';
+      return 'SMS+Email';
   }
 }
 
-function toneLabel(tone: Tone): string {
+function toneLabel(tone: ComposeDraft['tone']): string {
   return tone[0]!.toUpperCase() + tone.slice(1);
 }
 
 function clip(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  return s.length > max ? s.slice(0, max - 1) + '~' : s;
 }
