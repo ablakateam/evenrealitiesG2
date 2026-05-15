@@ -54,6 +54,11 @@ export const ComposePage: Page = {
   id: 'compose',
 
   async mount(ctx: PageContext): Promise<void> {
+    // Retry path calls mount() without an intervening unmount.
+    if (tick) {
+      clearInterval(tick);
+      tick = null;
+    }
     state = 'recording';
     recorder = new AudioRecorder();
     recorder.start();

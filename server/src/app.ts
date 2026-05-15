@@ -16,6 +16,7 @@ import { historyRouter } from './routes/history.js';
 import { integrationsRouter } from './routes/integrations.js';
 import { accountRouter } from './routes/account.js';
 import { idleRouter } from './routes/idle.js';
+import { voiceCommandRouter } from './routes/voice-command.js';
 
 export function buildApp(): Express {
   const app = express();
@@ -67,6 +68,7 @@ export function buildApp(): Express {
   app.use(integrationsRouter);
   app.use(accountRouter);
   app.use(idleRouter);
+  app.use(voiceCommandRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'not_found' });

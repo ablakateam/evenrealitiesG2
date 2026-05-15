@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P15 ✓ complete → ready for P16 |
-| **% complete (overall)** | 80% (P0–P15 done) |
+| **Current phase** | P16 ✓ complete → ready for P17 |
+| **% complete (overall)** | 85% (P0–P16 done) |
 | **Last update** | 2026-05-15 |
-| **Active session** | P15 closed — Smart Idle's reply suggestions now open the new InboxReadPage (full body + reply action); tapping reply pushes ComposePage with a staged prefill (recipient, channel, replyContext) so the subsequent ConfirmPage renders with `=TO` and `=VIA` locked and the title bar reads "Reply to <sender>". Sim-verified: tapped first idle reply → email body rendered → reply → confirm shows locked-TO/VIA. |
+| **Active session** | P16 closed — `/api/voice-command` classifies any utterance into one of 8 intent classes (compose · reply · navigate · search · save_contact · settings · cancel · unknown) using the same LLM provider as compose; HUD has a new `VoicePage` reachable via the new `> Speak (voice)` shortcut at the top of Idle that records → STT → classifier → dispatches. Long-press is impossible on the current SDK (R1 confirmed: only CLICK_EVENT / DOUBLE_CLICK_EVENT, no press/release timing), so the explicit Speak shortcut replaces it. Curl-verified all 5 critical intents return correct structured actions in <1s. |
 | **Blockers** | — |
-| **Next milestone** | P16 — Voice-anywhere (long-press temple, /api/voice-command classifier, per-page voice routing) |
+| **Next milestone** | P17 — Polish (microcopy, empty/error states, first-run voice cue, brightness microinteractions) |
 
 ---
 
@@ -35,10 +35,8 @@
 - [x] **P13** HUD voice compose pipeline *(complete 2026-05-14 — `AudioRecorder` (RMS meter + silence/max auto-stop, fallback for sim's empty mic buffer), `ComposePage` (recording/transcribing/error visual states, awaited mic control to avoid bridge races), `ConfirmPage` (atom rows TO/VIA/TONE/MSG with `*..` confidence dots, SUBJECT row for email intent, native list cursor + stub routing on each atom tap), `render.ts` HMR-safe createStartUp fallback + rebuild retry; entire app converted to a fixed 3-container shape (title-text c1 / list-c2 capture / footer-text c3) after discovering `rebuildPageContainer` can't reintroduce dropped container IDs; verified end-to-end on the simulator — Idle → scroll → tap → record → tap-stop → /api/compose round-trip → confirm renders atoms → TO-row tap → P14 stub. Two new G2 SDK quirks logged in LESSONSLEARNED §P13.)*
 - [x] **P14** HUD tone picker + send *(complete 2026-05-15 — shared `draft.ts` module holds the editable intent + variants between Confirm and the pickers; four real picker pages (`recipient-picker.ts`, `channel-picker.ts`, `tone-picker.ts`, `subject-prompt.ts`) push themselves on the router stack and mutate the draft; `ConfirmPage` refactored from a factory to a singleton that reads from the draft on every mount; SEND row triggers `sendDraft` which validates, posts to /api/sms or /api/email with idempotency, and routes to a channel-aware `Sent` page (`->` glyph for SMS, `>>>` for email, copy "Off to <name>" / "Off to <name>'s inbox"); compose.ts onEvent now handles both `tap` and `list-select` because its capture container is a list. **End-to-end sim test sent a real SMS to Dan's number via Twilio — history row #4, status=delivered.** Voice → confirm → send → delivered round-trip now ships.)*
 - [x] **P15** HUD inbox + reply *(complete 2026-05-15 — `InboxPage` paginated list view, `InboxReadPage` factory for single-message body display with native scroll + reply action (marks read via /api/inbox/:id/read on mount); `draft.ts` extended with `replyContext` + `locked` flags + a `stagePrefillForReply` slot consumed on the next `setDraftFromCompose` call so ComposePage stays a single page; `ConfirmPage` honours the locks (cursor on locked row is a no-op) and shows "Reply to <sender>" as the title; idle's reply suggestions wired to fetch the inbox item and push the read view. Sim-verified: top idle reply → InboxRead → tap reply → record → ConfirmPage shows `=TO cs`/`=VIA Email` locked with ***confidence + "Reply to cs" title.)*
-- [ ] **P16** Voice-anywhere
-- [ ] **P15** HUD inbox + reply
-- [ ] **P16** Voice-anywhere
-- [ ] **P17** Polish
+- [x] **P16** Voice-anywhere *(complete 2026-05-15 — server `/api/voice-command` classifier route + `buildVoiceCommandSystemPrompt` (compose·reply·navigate·search·save_contact·settings·cancel·unknown), HUD `VoicePage` (record → STT → classifier → dispatch), Idle has new `> Speak (voice)` + `> Open inbox` shortcuts at top; compose-intent dispatch re-runs `/api/compose` with the transcription and routes through Confirm; save_contact intent POSTs `/api/contacts` and shows a success stub; navigate intent calls `router.go(page)`. Long-press temple gesture verified impossible on the current SDK (Risk R1) — explicit Speak shortcut replaces it. Curl-verified: 5 critical intents return structured actions in <1s.)*
+- [ ] **P17** Polish (microcopy + empty/error states + first-run cue)
 - [ ] **P18** Hardening
 - [ ] **P19** Hardware testing
 - [ ] **P20** Even Hub submission

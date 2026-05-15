@@ -8,6 +8,7 @@ import { makeStubPage } from './stub.js';
 import { ComposePage } from './compose.js';
 import { InboxPage, type InboxItem } from './inbox.js';
 import { makeInboxReadPage } from './inbox-read.js';
+import { VoicePage } from './voice.js';
 
 /**
  * Smart Idle — the HUD's root screen.
@@ -27,7 +28,9 @@ import { makeInboxReadPage } from './inbox-read.js';
 type IdleAction =
   | { kind: 'compose' }
   | { kind: 'compose-to'; contact_id: number; name: string }
-  | { kind: 'reply'; inbox_id: number };
+  | { kind: 'reply'; inbox_id: number }
+  | { kind: 'voice' }
+  | { kind: 'open-inbox' };
 
 interface IdleSuggestion {
   id: string;
@@ -62,11 +65,17 @@ export const IdlePage: Page = {
 
     // Fetch suggestions + status (one round-trip) and battery in parallel.
     const [data, battery] = await Promise.all([fetchIdle(), fetchBattery()]);
-    suggestionsCache = data?.suggestions ?? [];
 
-    const items = suggestionsCache.length > 0
-      ? suggestionsCache.map((s) => s.label)
-      : ['Compose (voice)'];
+    // Prepend client-side voice + inbox shortcuts so they're always available
+    // without needing a server change. These come BEFORE the server's
+    // ranked suggestions so they're easy to reach (one tap from idle).
+    const clientSide: IdleSuggestion[] = [
+      { id: 'voice', label: '> Speak (voice)', action: { kind: 'voice' } },
+      { id: 'open-inbox', label: '> Open inbox', action: { kind: 'open-inbox' } },
+    ];
+    suggestionsCache = [...clientSide, ...(data?.suggestions ?? [])];
+
+    const items = suggestionsCache.map((s) => s.label);
 
     await showPage(ctx.bridge, {
       texts: [
@@ -97,11 +106,17 @@ let suggestionsCache: IdleSuggestion[] = [];
 
 async function routeToAction(action: IdleAction, ctx: PageContext): Promise<void> {
   switch (action.kind) {
+    case 'voice':
+      await ctx.router.push(VoicePage);
+      break;
+    case 'open-inbox':
+      await ctx.router.push(InboxPage);
+      break;
     case 'compose':
       await ctx.router.push(ComposePage);
       break;
     case 'compose-to':
-      // TODO P16: pre-fill the recipient from action.contact_id. For now the
+      // TODO P17: pre-fill the recipient from action.contact_id. For now the
       // voice compose flow runs and the confirm screen's TO atom is editable.
       await ctx.router.push(ComposePage);
       break;

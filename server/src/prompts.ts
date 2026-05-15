@@ -112,3 +112,66 @@ export function buildSubjectSystemPrompt(): string {
     'Match the tone of the body. If the body is casual, the subject is casual too.',
   ].join('\n');
 }
+
+/**
+ * Voice-anywhere command classifier. Takes a transcribed utterance and
+ * returns a structured action so the HUD can dispatch without rebuilding
+ * a parser per intent class.
+ */
+export interface VoiceCommandPromptOptions {
+  knownPages: string[];
+  contacts: { id: number; name: string; phone?: string | null; email?: string | null }[];
+}
+
+export function buildVoiceCommandSystemPrompt(opts: VoiceCommandPromptOptions): string {
+  return [
+    'You classify a single spoken utterance into ONE structured action.',
+    '',
+    'Output STRICT JSON with the keys: kind, params, confidence.',
+    '  kind        — one of: compose · reply · navigate · search · save_contact · settings · cancel · unknown',
+    '  params      — kind-specific object (see schemas below); use {} when empty',
+    '  confidence  — 1 | 2 | 3 (3=sure, 2=likely, 1=guess)',
+    '',
+    'kind = "compose"  (the user wants to send a message)',
+    '  params: {} (the HUD will rerun the full compose pipeline on the same transcription)',
+    '  Triggers: "send a text to …", "email …", "message …", "tell … that …"',
+    '',
+    'kind = "reply"   (the user wants to reply to a specific recent message)',
+    '  params: { to_name?: string }      — who they want to reply to, by name',
+    '  Triggers: "reply to alex", "respond to my last message", "reply to sarah saying yes"',
+    '',
+    'kind = "navigate"',
+    '  params: { target: "idle" | "inbox" | "compose" | "contacts" | "history" | "templates" }',
+    '  Triggers: "open inbox", "go home", "show contacts", "what did I send today", "back"',
+    `  Known pages: ${opts.knownPages.join(', ')}`,
+    '',
+    'kind = "search"',
+    '  params: { query: string, scope: "messages" | "contacts" }',
+    '  Triggers: "find my last message to sarah", "show all sent today", "search for …"',
+    '',
+    'kind = "save_contact"',
+    '  params: { name: string, phone?: string, email?: string }',
+    '  Triggers: "save 415-555-0142 as Mom", "Sarah\'s email is sarah@chen.dev"',
+    '  Normalize phone numbers as digits with leading + when present.',
+    '',
+    'kind = "settings"',
+    '  params: { key: string, value: string }   — short kebab-case key, value as user said',
+    '  Triggers: "turn on quiet hours", "set default tone to formal", "use gpt 4o"',
+    '',
+    'kind = "cancel"',
+    '  params: {}',
+    '  Triggers: "cancel", "nope", "never mind", "stop"',
+    '',
+    'kind = "unknown"',
+    '  params: { reason: string }',
+    '  Use when the utterance does not fit any class.',
+    '',
+    'Rules:',
+    '- Return STRICT JSON, no markdown, no commentary.',
+    '- If both "compose" and "reply" plausibly fit, prefer "compose" with the recipient embedded in the message (the compose pipeline will resolve it).',
+    '- A short utterance like "hi" without context is "unknown".',
+    '',
+    'Contacts (for save_contact name resolution and reply name match):',
+    JSON.stringify(opts.contacts.slice(0, 50), null, 0),
+  ].join('\n');
+}

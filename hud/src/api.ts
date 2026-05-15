@@ -110,3 +110,30 @@ export interface ComposeResult {
   variants: VariantResult[];
   total_latency_ms: number;
 }
+
+/* --- /api/stt + /api/voice-command --------------------------------------- */
+
+export interface SttResult {
+  text: string;
+  language: string | null;
+  duration_seconds: number;
+  latency_ms: number;
+}
+
+export type KnownPage = 'idle' | 'inbox' | 'compose' | 'contacts' | 'history' | 'templates';
+
+export type VoiceAction =
+  | { kind: 'compose'; params: Record<string, never>; confidence: 1 | 2 | 3 }
+  | { kind: 'reply'; params: { to_name?: string }; confidence: 1 | 2 | 3 }
+  | { kind: 'navigate'; params: { target: KnownPage }; confidence: 1 | 2 | 3 }
+  | { kind: 'search'; params: { query: string; scope: 'messages' | 'contacts' }; confidence: 1 | 2 | 3 }
+  | { kind: 'save_contact'; params: { name: string; phone?: string; email?: string }; confidence: 1 | 2 | 3 }
+  | { kind: 'settings'; params: { key: string; value: string }; confidence: 1 | 2 | 3 }
+  | { kind: 'cancel'; params: Record<string, never>; confidence: 1 | 2 | 3 }
+  | { kind: 'unknown'; params: { reason: string }; confidence: 1 | 2 | 3 };
+
+export interface VoiceCommandResult {
+  transcription: string;
+  action: VoiceAction;
+  latency_ms: number;
+}
