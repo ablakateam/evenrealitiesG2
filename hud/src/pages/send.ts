@@ -79,7 +79,9 @@ export async function sendDraft(ctx: PageContext): Promise<void> {
 }
 
 function validate(draft: ComposeDraft): string | null {
-  if (!draft.recipient.id) return 'Pick a recipient first.';
+  // For replies the contact may not be in the address book — phone OR email
+  // is enough as long as a reachable address is present.
+  if (!draft.recipient.phone && !draft.recipient.email) return 'Pick a recipient first.';
   const body = getBodyText(draft);
   if (!body || !body.trim()) return 'Body is empty — re-record.';
   if (draft.channel === 'sms' && !draft.recipient.phone) {
@@ -99,10 +101,10 @@ async function postSms(draft: ComposeDraft, body: string, clientUuid: string): P
   const req: SmsRequest = {
     to: draft.recipient.phone!,
     body,
-    contact_id: draft.recipient.id!,
     tone: draft.tone,
     client_uuid: clientUuid,
   };
+  if (draft.recipient.id) req.contact_id = draft.recipient.id;
   await apiPost('/api/sms', req);
 }
 
@@ -111,10 +113,10 @@ async function postEmail(draft: ComposeDraft, body: string, clientUuid: string):
     to: draft.recipient.email!,
     subject: draft.subject ?? 'Message from VOX',
     body,
-    contact_id: draft.recipient.id!,
     tone: draft.tone,
     client_uuid: clientUuid,
   };
+  if (draft.recipient.id) req.contact_id = draft.recipient.id;
   await apiPost('/api/email', req);
 }
 

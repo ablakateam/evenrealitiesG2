@@ -21,6 +21,14 @@ export interface DraftRecipient {
   email: string | null;
 }
 
+export interface ReplyContext {
+  inbox_id: number;
+  from_name: string;
+  from_address: string;
+  original_body: string;
+  channel: 'sms' | 'email';
+}
+
 export interface ComposeDraft {
   transcription: string;
   baseIntent: IntentResult;
@@ -29,11 +37,28 @@ export interface ComposeDraft {
   channel: 'sms' | 'email' | 'both';
   tone: Tone;
   subject: string | null; // email-only
+  /** When set, the user is replying — TO + VIA are locked to this context. */
+  replyContext?: ReplyContext;
+  /** Locked fields can't be re-picked from confirm. */
+  locked: { recipient: boolean; channel: boolean };
 }
 
 let current: ComposeDraft | null = null;
 
+/** Pre-fill applied to the NEXT setDraftFromCompose call. Used by reply flow. */
+let pendingPrefill: {
+  recipient: DraftRecipient;
+  channel: 'sms' | 'email' | 'both';
+  replyContext: ReplyContext;
+  locked: { recipient: boolean; channel: boolean };
+} | null = null;
+
 const DEFAULT_TONE: Tone = 'casual';
+
+/** Stage a recipient + channel lock before pushing ComposePage (reply flow). */
+export function stagePrefillForReply(prefill: NonNullable<typeof pendingPrefill>): void {
+  pendingPrefill = prefill;
+}
 
 /**
  * Initialize the draft from a /api/compose response. Picks the best initial
@@ -52,16 +77,19 @@ export function setDraftFromCompose(result: ComposeResult): ComposeDraft | null 
     transcription: result.transcription,
     baseIntent: intent,
     variants: result.variants,
-    recipient: {
+    recipient: pendingPrefill?.recipient ?? {
       id: intent.recipient_id,
       name: intent.recipient_name,
       phone: null,
       email: null,
     },
-    channel,
+    channel: pendingPrefill?.channel ?? channel,
     tone,
     subject: intent.subject,
+    replyContext: pendingPrefill?.replyContext,
+    locked: pendingPrefill?.locked ?? { recipient: false, channel: false },
   };
+  pendingPrefill = null; // one-shot — consumed
   return current;
 }
 
@@ -108,6 +136,7 @@ export function getCurrentVariant(d: ComposeDraft = current!): VariantResult | u
 
 export function clearDraft(): void {
   current = null;
+  pendingPrefill = null;
 }
 
 function pickInitialTone(variants: VariantResult[], preferred: Tone): Tone {

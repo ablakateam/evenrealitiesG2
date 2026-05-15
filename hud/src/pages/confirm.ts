@@ -50,9 +50,14 @@ export const ConfirmPage: Page = {
 
     atoms = buildAtoms(draft);
     const isEmail = draft.channel === 'email';
+    const title = draft.replyContext
+      ? `Reply to ${clip(draft.replyContext.from_name, 32)}`
+      : isEmail
+        ? 'Send this email?'
+        : 'Send this?';
     await showPage(ctx.bridge, {
       texts: [
-        { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: isEmail ? 'Send this email?' : 'Send this?' },
+        { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: title },
         { id: FOOTER_ID, x: 0, y: 236, w: 576, h: 48, capture: false, content: `[SCRL] move  [TAP] pick  [X2] cancel` },
       ],
       lists: [{ id: LIST_ID, x: 0, y: 48, w: 576, h: 184, capture: true, items: atoms.map((a) => a.label) }],
@@ -63,11 +68,14 @@ export const ConfirmPage: Page = {
     if (event.kind !== 'list-select') return;
     const atom = atoms[event.index];
     if (!atom) return;
+    const draft = getDraft();
     switch (atom.key) {
       case 'to':
+        if (draft?.locked.recipient) return; // reply flow — TO is locked
         await ctx.router.push(RecipientPickerPage);
         break;
       case 'via':
+        if (draft?.locked.channel) return; // reply flow — VIA is locked
         await ctx.router.push(ChannelPickerPage);
         break;
       case 'subject':
@@ -93,9 +101,13 @@ export const ConfirmPage: Page = {
 function buildAtoms(draft: ComposeDraft): Atom[] {
   const isEmail = draft.channel === 'email';
   const out: Atom[] = [];
+  // Locked rows show 3-dot confidence and a `=` prefix instead of the label.
+  // Picker is no-op when locked (see onEvent guard).
+  const toConf = draft.locked.recipient ? 3 : draft.baseIntent.confidence.recipient;
+  const viaConf = draft.locked.channel ? 3 : draft.baseIntent.confidence.channel;
   out.push({
     key: 'to',
-    label: row('TO', draft.recipient.name ?? '(pick)', draft.baseIntent.confidence.recipient),
+    label: row(draft.locked.recipient ? '=TO' : 'TO', draft.recipient.name ?? '(pick)', toConf),
   });
   if (isEmail) {
     out.push({
@@ -103,7 +115,10 @@ function buildAtoms(draft: ComposeDraft): Atom[] {
       label: row('SUBJ', draft.subject ?? '(none)', draft.subject ? 3 : 1),
     });
   }
-  out.push({ key: 'via', label: row('VIA', channelLabel(draft.channel), draft.baseIntent.confidence.channel) });
+  out.push({
+    key: 'via',
+    label: row(draft.locked.channel ? '=VIA' : 'VIA', channelLabel(draft.channel), viaConf),
+  });
   out.push({ key: 'tone', label: row('TONE', toneLabel(draft.tone), 2) });
   out.push({
     key: 'msg',

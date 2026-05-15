@@ -6,6 +6,8 @@ import { apiGet, HudApiError } from '../api.js';
 import { getBridge } from '../bridge.js';
 import { makeStubPage } from './stub.js';
 import { ComposePage } from './compose.js';
+import { InboxPage, type InboxItem } from './inbox.js';
+import { makeInboxReadPage } from './inbox-read.js';
 
 /**
  * Smart Idle — the HUD's root screen.
@@ -99,14 +101,28 @@ async function routeToAction(action: IdleAction, ctx: PageContext): Promise<void
       await ctx.router.push(ComposePage);
       break;
     case 'compose-to':
-      // P14 pre-fills the recipient; for now the voice compose flow runs and
-      // the confirm screen's TO atom is editable.
+      // TODO P16: pre-fill the recipient from action.contact_id. For now the
+      // voice compose flow runs and the confirm screen's TO atom is editable.
       await ctx.router.push(ComposePage);
       break;
     case 'reply':
-      await ctx.router.push(makeStubPage('reply', 'REPLY', 'Inbox + reply ships in P15.'));
+      try {
+        const item = await apiGet<InboxItem>(`/api/inbox/${action.inbox_id}`);
+        await ctx.router.push(makeInboxReadPage(item));
+      } catch (err) {
+        const msg = err instanceof HudApiError ? err.message : 'Couldn\'t open that message.';
+        await ctx.router.push(makeStubPage('reply-err', 'Hmm.', msg));
+      }
       break;
   }
+}
+
+/**
+ * Exposes a way for callers (voice-anywhere classifier later) to open the
+ * inbox directly from any page. Kept here to avoid a circular import.
+ */
+export function navigateToInbox(ctx: PageContext): Promise<void> {
+  return ctx.router.push(InboxPage);
 }
 
 async function fetchIdle(): Promise<IdleResponse | null> {

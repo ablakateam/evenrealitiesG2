@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P14 ✓ complete → ready for P15 |
-| **% complete (overall)** | 75% (P0–P14 done) |
+| **Current phase** | P15 ✓ complete → ready for P16 |
+| **% complete (overall)** | 80% (P0–P15 done) |
 | **Last update** | 2026-05-15 |
-| **Active session** | P14 closed — every Confirm atom row is wired to a real picker (recipient / channel / tone / subject) backed by a shared `draft` module, and tapping SEND posts to /api/sms or /api/email and routes to a channel-aware Sent screen. End-to-end sim test sent a real SMS to the Dan contact via Twilio (history #4, status=delivered). |
+| **Active session** | P15 closed — Smart Idle's reply suggestions now open the new InboxReadPage (full body + reply action); tapping reply pushes ComposePage with a staged prefill (recipient, channel, replyContext) so the subsequent ConfirmPage renders with `=TO` and `=VIA` locked and the title bar reads "Reply to <sender>". Sim-verified: tapped first idle reply → email body rendered → reply → confirm shows locked-TO/VIA. |
 | **Blockers** | — |
-| **Next milestone** | P15 — HUD inbox + reply (banner in title bar, inbox list, read view, reply flow with TO locked) |
+| **Next milestone** | P16 — Voice-anywhere (long-press temple, /api/voice-command classifier, per-page voice routing) |
 
 ---
 
@@ -34,7 +34,8 @@
 - [x] **P12** HUD Smart Idle *(complete 2026-05-14 — `/api/idle-suggestions` ranks unread-replies → quiet-streak contacts → compose + a status block; HUD render system redesigned to frame with real container `borderWidth` (I-007 resolved); Smart Idle page = title-bar + native scrollable suggestion list + footer, 3 bordered containers; status badges (NET/TWL/MAIL/BAT) live; tap routes to per-action stub pages; server CORS middleware added; verified on the simulator — renders cleanly, list selection highlight works, tap → stub routing confirmed; 95/95 server tests pass)*
 - [x] **P13** HUD voice compose pipeline *(complete 2026-05-14 — `AudioRecorder` (RMS meter + silence/max auto-stop, fallback for sim's empty mic buffer), `ComposePage` (recording/transcribing/error visual states, awaited mic control to avoid bridge races), `ConfirmPage` (atom rows TO/VIA/TONE/MSG with `*..` confidence dots, SUBJECT row for email intent, native list cursor + stub routing on each atom tap), `render.ts` HMR-safe createStartUp fallback + rebuild retry; entire app converted to a fixed 3-container shape (title-text c1 / list-c2 capture / footer-text c3) after discovering `rebuildPageContainer` can't reintroduce dropped container IDs; verified end-to-end on the simulator — Idle → scroll → tap → record → tap-stop → /api/compose round-trip → confirm renders atoms → TO-row tap → P14 stub. Two new G2 SDK quirks logged in LESSONSLEARNED §P13.)*
 - [x] **P14** HUD tone picker + send *(complete 2026-05-15 — shared `draft.ts` module holds the editable intent + variants between Confirm and the pickers; four real picker pages (`recipient-picker.ts`, `channel-picker.ts`, `tone-picker.ts`, `subject-prompt.ts`) push themselves on the router stack and mutate the draft; `ConfirmPage` refactored from a factory to a singleton that reads from the draft on every mount; SEND row triggers `sendDraft` which validates, posts to /api/sms or /api/email with idempotency, and routes to a channel-aware `Sent` page (`->` glyph for SMS, `>>>` for email, copy "Off to <name>" / "Off to <name>'s inbox"); compose.ts onEvent now handles both `tap` and `list-select` because its capture container is a list. **End-to-end sim test sent a real SMS to Dan's number via Twilio — history row #4, status=delivered.** Voice → confirm → send → delivered round-trip now ships.)*
-- [ ] **P15** HUD inbox + reply
+- [x] **P15** HUD inbox + reply *(complete 2026-05-15 — `InboxPage` paginated list view, `InboxReadPage` factory for single-message body display with native scroll + reply action (marks read via /api/inbox/:id/read on mount); `draft.ts` extended with `replyContext` + `locked` flags + a `stagePrefillForReply` slot consumed on the next `setDraftFromCompose` call so ComposePage stays a single page; `ConfirmPage` honours the locks (cursor on locked row is a no-op) and shows "Reply to <sender>" as the title; idle's reply suggestions wired to fetch the inbox item and push the read view. Sim-verified: top idle reply → InboxRead → tap reply → record → ConfirmPage shows `=TO cs`/`=VIA Email` locked with ***confidence + "Reply to cs" title.)*
+- [ ] **P16** Voice-anywhere
 - [ ] **P15** HUD inbox + reply
 - [ ] **P16** Voice-anywhere
 - [ ] **P17** Polish
