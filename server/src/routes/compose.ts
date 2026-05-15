@@ -6,6 +6,7 @@ import { compose } from '../compose.js';
 import { transcribe } from '../audio/stt.js';
 import { LlmError } from '../llm/provider.js';
 import { log } from '../log.js';
+import { rateLimit } from '../rate-limit.js';
 
 export const composeRouter = Router();
 
@@ -24,7 +25,7 @@ const upload = multer({
  *
  * Returns: { text, language, duration_seconds, latency_ms }
  */
-composeRouter.post('/api/stt', requireAuth, upload.single('audio'), async (req, res) => {
+composeRouter.post('/api/stt', requireAuth, rateLimit({ bucket: 'stt', limit: 60 }), upload.single('audio'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: 'audio_missing', message: 'POST a multipart form with field "audio"' });
     return;
@@ -53,6 +54,7 @@ composeRouter.post('/api/stt', requireAuth, upload.single('audio'), async (req, 
 composeRouter.post(
   '/api/compose',
   requireAuth,
+  rateLimit({ bucket: 'rewrite', limit: 1200 }),
   // multer is conditional — accept either multipart or JSON
   (req, res, next) => {
     const ct = req.headers['content-type'] ?? '';

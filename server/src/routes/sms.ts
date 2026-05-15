@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { requireAuth } from '../auth.js';
+import { rateLimit } from '../rate-limit.js';
 import { getDb } from '../db.js';
 import { sendSms, normalizeE164, SmsError } from '../sms/twilio-client.js';
 import { env } from '../env.js';
@@ -25,7 +26,7 @@ const SendBody = z.object({
  * after a network hiccup, the same uuid returns the existing outbox row
  * without re-firing the Twilio API.
  */
-smsRouter.post('/api/sms', requireAuth, async (req, res) => {
+smsRouter.post('/api/sms', requireAuth, rateLimit({ bucket: 'sms', limit: 200 }), async (req, res) => {
   const parsed = SendBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues });

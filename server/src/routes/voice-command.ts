@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
+import { rateLimit } from '../rate-limit.js';
 import { getDb } from '../db.js';
 import { createProvider } from '../llm/factory.js';
 import { LlmError, type ProviderName } from '../llm/provider.js';
@@ -40,7 +41,7 @@ export type VoiceAction =
  *
  * Returns: { transcription, action, latency_ms }
  */
-voiceCommandRouter.post('/api/voice-command', requireAuth, async (req, res) => {
+voiceCommandRouter.post('/api/voice-command', requireAuth, rateLimit({ bucket: 'rewrite', limit: 1200 }), async (req, res) => {
   const parsed = ReqSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues });

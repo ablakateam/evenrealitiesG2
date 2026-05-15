@@ -3,6 +3,18 @@ import { Router } from './router.js';
 import { IdlePage } from './pages/idle.js';
 import { VoiceCuePage } from './pages/voice-cue.js';
 import { bootstrapPairingFromUrl, hasSeenVoiceCue, getPairing } from './kvs.js';
+import { hudApi } from './api.js';
+
+async function sendTelemetry(payload: { message: string; stack: string | null; page: string | null }): Promise<void> {
+  try {
+    await hudApi('/api/telemetry/error', {
+      method: 'POST',
+      body: { ...payload, app_version: '0.1.0' },
+    });
+  } catch {
+    // Best-effort: don't surface a telemetry failure to the user.
+  }
+}
 
 /**
  * VOX HUD entry point.
@@ -42,7 +54,32 @@ async function main(): Promise<void> {
       return;
     }
 
+    // FOREGROUND_EXIT: another app took focus or user backgrounded VOX.
+    // Globally close the mic so we never drain battery in the background.
+    // Pages that own per-page state still see the event via router.dispatch.
+    if (event.kind === 'foreground-exit') {
+      void bridge.audioControl(false).catch(() => {});
+    }
+
     router.dispatch(event);
+  });
+
+  // Global error → telemetry. The /api/telemetry/error route is best-effort:
+  // we send what we have, swallow any failure, never block the user.
+  window.addEventListener('error', (e) => {
+    void sendTelemetry({
+      message: e.message,
+      stack: e.error instanceof Error ? e.error.stack : null,
+      page: router.currentId,
+    });
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const reason = e.reason instanceof Error ? e.reason : null;
+    void sendTelemetry({
+      message: reason?.message ?? String(e.reason),
+      stack: reason?.stack ?? null,
+      page: router.currentId,
+    });
   });
 
   // --- Mount the root page ------------------------------------------------

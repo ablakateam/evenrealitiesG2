@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P17 ✓ complete → ready for P18 |
-| **% complete (overall)** | 90% (P0–P17 done) |
+| **Current phase** | P18 ✓ complete → ready for P19 prep |
+| **% complete (overall)** | 95% (P0–P18 done) |
 | **Last update** | 2026-05-15 |
-| **Active session** | P17 closed — first-run `VoiceCuePage` (one-shot KVS-gated tutorial card primes the voice grammar before users land on Idle), inbox sender display switched from local-part to full address (`team@newsletter.artli~` instead of just "team"), reply title shows full from_address, voice error copy is empathetic ("Didn't quite catch that — try again or get more specific"), Sent screen auto-returns to Idle after 4 s. Mount-retry tick cleanup hardened across Compose + Voice pages. |
+| **Active session** | P18 closed — per-user hourly rate limits wired on the four expensive routes (stt 60/h, rewrite/voice-command 1200/h, sms 200/h, email 400/h) using the existing `rate_limit_state` table; fails open on metering errors so a counter bug never blocks real work. `POST /api/telemetry/error` route writes to `client_errors`; HUD `main.ts` subscribes to global `error` + `unhandledrejection` events and ships them best-effort, plus the global event subscriber now closes the mic on FOREGROUND_EXIT so backgrounded VOX never drains the battery. |
 | **Blockers** | — |
-| **Next milestone** | P18 — Hardening (offline outbox retry, rate limits, telemetry, foreground-exit pauses mic + sse) |
+| **Next milestone** | P19-prep — build `.ehpk`, smoke-test it on the simulator end-to-end before the real-glasses test session |
 
 ---
 
@@ -37,7 +37,7 @@
 - [x] **P15** HUD inbox + reply *(complete 2026-05-15 — `InboxPage` paginated list view, `InboxReadPage` factory for single-message body display with native scroll + reply action (marks read via /api/inbox/:id/read on mount); `draft.ts` extended with `replyContext` + `locked` flags + a `stagePrefillForReply` slot consumed on the next `setDraftFromCompose` call so ComposePage stays a single page; `ConfirmPage` honours the locks (cursor on locked row is a no-op) and shows "Reply to <sender>" as the title; idle's reply suggestions wired to fetch the inbox item and push the read view. Sim-verified: top idle reply → InboxRead → tap reply → record → ConfirmPage shows `=TO cs`/`=VIA Email` locked with ***confidence + "Reply to cs" title.)*
 - [x] **P16** Voice-anywhere *(complete 2026-05-15 — server `/api/voice-command` classifier route + `buildVoiceCommandSystemPrompt` (compose·reply·navigate·search·save_contact·settings·cancel·unknown), HUD `VoicePage` (record → STT → classifier → dispatch), Idle has new `> Speak (voice)` + `> Open inbox` shortcuts at top; compose-intent dispatch re-runs `/api/compose` with the transcription and routes through Confirm; save_contact intent POSTs `/api/contacts` and shows a success stub; navigate intent calls `router.go(page)`. Long-press temple gesture verified impossible on the current SDK (Risk R1) — explicit Speak shortcut replaces it. Curl-verified: 5 critical intents return structured actions in <1s.)*
 - [x] **P17** Polish (microcopy + empty/error states + first-run cue) *(complete 2026-05-15 — first-run `VoiceCuePage` (KVS `seen_voice_cue` flag gates it; teaches the "> Speak" pattern with concrete example utterances), Inbox sender row shows the full from_address instead of just the local part, `InboxReadPage.senderName` returns the full from_address so reply titles read meaningfully, VoicePage error copy reworked to be warmer + suggest a concrete next step, SentPage auto-returns to Idle after 4 s (footer reads "back in 4s") with the timer cleared on tap / unmount, Compose + Voice `mount()` paths defensively clear any prior tick before scheduling a new one so retries don't leak timers.)*
-- [ ] **P18** Hardening
+- [x] **P18** Hardening *(complete 2026-05-15 — server `rate-limit.ts` (per-user hourly buckets via the existing `rate_limit_state` table; fails open on metering errors so a counter bug never blocks real work) wired onto stt(60/h), rewrite(1200/h covers /api/compose + /api/voice-command), sms(200/h), email(400/h); 429 response includes Retry-After and an empathetic message. New `POST /api/telemetry/error` route persists client crash dumps to `client_errors`. HUD `main.ts` subscribes to global `error` + `unhandledrejection` events and ships them best-effort, plus the global event subscriber now closes the mic on FOREGROUND_EXIT_EVENT — backgrounded VOX never drains the battery. Outbox table + idempotency-by-client_uuid already in place from P5/P6.)*
 - [ ] **P19** Hardware testing
 - [ ] **P20** Even Hub submission
 

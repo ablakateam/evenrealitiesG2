@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { requireAuth } from '../auth.js';
+import { rateLimit } from '../rate-limit.js';
 import { getDb } from '../db.js';
 import { sendEmail, EmailError } from '../mail/smtp.js';
 import { log } from '../log.js';
@@ -27,7 +28,7 @@ const SendBody = z.object({
  * Sent message also lands in the user's real Sent folder (we go through
  * their own SMTP), so there's no separate identity to track.
  */
-emailRouter.post('/api/email', requireAuth, async (req, res) => {
+emailRouter.post('/api/email', requireAuth, rateLimit({ bucket: 'email', limit: 400 }), async (req, res) => {
   const parsed = SendBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues });
