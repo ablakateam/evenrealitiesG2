@@ -107,6 +107,12 @@ function listProp(box: ListBox): ListContainerProperty {
  * The first page of the app must use createStartUpPageContainer; every page
  * after that uses rebuildPageContainer. We track that here so callers just
  * call `showPage()` and don't have to care.
+ *
+ * Vite HMR / page reload resets this flag, but the simulator (and real
+ * firmware) keep the previously-created startup container alive. In that
+ * case createStartUp returns a non-zero error code; we fall back to
+ * rebuild so the page renders anyway. Same logic protects against double
+ * boot races on real hardware.
  */
 let firstPageShown = false;
 
@@ -126,16 +132,24 @@ export async function showPage(bridge: EvenAppBridge, spec: PageSpec): Promise<b
       new CreateStartUpPageContainer({ containerTotalNum: total, textObject, listObject }),
     );
     firstPageShown = true;
-    if (result !== PAGE_OK) {
-      console.error(`[render] createStartUpPageContainer failed: ${result}`);
-      return false;
-    }
-    return true;
+    if (result === PAGE_OK) return true;
+    // Startup container already exists (after HMR / reload) — fall through.
+    console.warn(`[render] createStartUpPageContainer returned ${result}, falling back to rebuild`);
   }
 
-  return bridge.rebuildPageContainer(
+  let ok = await bridge.rebuildPageContainer(
     new RebuildPageContainer({ containerTotalNum: total, textObject, listObject }),
   );
+  if (!ok) {
+    // Brief retry — see L:38: lists with overlong items or rapid back-to-back
+    // rebuilds occasionally return false on the first try.
+    await new Promise((r) => setTimeout(r, 80));
+    ok = await bridge.rebuildPageContainer(
+      new RebuildPageContainer({ containerTotalNum: total, textObject, listObject }),
+    );
+    if (!ok) console.warn(`[render] rebuildPageContainer failed twice (total=${total})`);
+  }
+  return ok;
 }
 
 /** Flicker-free in-place update of a single text container's content. */

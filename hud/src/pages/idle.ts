@@ -5,6 +5,7 @@ import { getPairing } from '../kvs.js';
 import { apiGet, HudApiError } from '../api.js';
 import { getBridge } from '../bridge.js';
 import { makeStubPage } from './stub.js';
+import { ComposePage } from './compose.js';
 
 /**
  * Smart Idle — the HUD's root screen.
@@ -95,12 +96,12 @@ let suggestionsCache: IdleSuggestion[] = [];
 async function routeToAction(action: IdleAction, ctx: PageContext): Promise<void> {
   switch (action.kind) {
     case 'compose':
-      await ctx.router.push(makeStubPage('compose', 'COMPOSE', 'Voice compose ships in P13.'));
+      await ctx.router.push(ComposePage);
       break;
     case 'compose-to':
-      await ctx.router.push(
-        makeStubPage('compose-to', 'COMPOSE', `Message ${action.name} — voice compose ships in P13.`),
-      );
+      // P14 pre-fills the recipient; for now the voice compose flow runs and
+      // the confirm screen's TO atom is editable.
+      await ctx.router.push(ComposePage);
       break;
     case 'reply':
       await ctx.router.push(makeStubPage('reply', 'REPLY', 'Inbox + reply ships in P15.'));

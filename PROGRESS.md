@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P12 ✓ complete → ready for P13 |
-| **% complete (overall)** | 65% (P0–P12 done) |
+| **Current phase** | P13 ✓ complete → ready for P14 |
+| **% complete (overall)** | 70% (P0–P13 done) |
 | **Last update** | 2026-05-14 |
-| **Active session** | P12 closed — Smart Idle live on the simulator: server-ranked suggestion list + status badges + container-border visual system (I-007 resolved); CORS added to the server |
+| **Active session** | P13 closed — full voice compose pipeline live on the simulator: Idle → tap Compose → recording (3-container layout) → auto-stop → /api/compose round-trip → confirm page renders atoms (TO/VIA/TONE/MSG) with confidence dots + native list cursor + stub routing on tap. Two non-obvious G2 quirks documented in LESSONSLEARNED: rebuildPageContainer can't expand a previously-shrunk container set, and list items >~32 chars cause silent rebuild failure. |
 | **Blockers** | — |
-| **Next milestone** | P13 — HUD voice compose pipeline (mic → /api/compose → atom-card confirm) |
+| **Next milestone** | P14 — HUD tone picker + send (replace P13 confirm stubs with real recipient/tone pickers + outbound send) |
 
 ---
 
@@ -32,7 +32,7 @@
 - [x] **P10** Dashboard surfaces *(complete 2026-05-14 — all 8 stub pages built into full surfaces: Integrations (per-provider cards + edit/test/remove modals + email account), Contacts (search, CRUD, favorite, CSV import), Templates (CRUD + up/down reorder), Inbox (list + thread + mark-read, 20s poll), Activity (filterable history + stats + CSV export), Preferences (5 sectioned config groups, auto-save), Diagnostics (run-all panel against `/api/diagnostics`), Account (pairing QR + secret rotation + sign out). Server: `/api/diagnostics` (5/5 checks pass live), `/api/account` + `/api/account/rotate-secret`. UI primitives added: Switch, Select, Modal, Field, InlineNote. Dashboard 99 KB gzipped. The full phone companion is functional.)*
 - [x] **P11** HUD scaffold *(complete 2026-05-14 — `hud/` from the official `evenhub-templates/minimal`; bridge.ts (event normalization across sysEvent/textEvent/listEvent/audioEvent, CLICK_EVENT-as-undefined coalesced), kvs.ts (bridge.setLocalStorage wrapper + pairing store + URL bootstrap), api.ts (bearer-auth client to the VOX server), router.ts (page state machine + back stack), render.ts (container helpers + brightness palette), Idle placeholder page; root double-tap → `shutDownPageContainer(1)` exit gate enforced in main.ts; verified on `evenhub-simulator` via its :9898 automation API — render, tap→CLICK_EVENT→textContainerUpgrade, scroll, double-tap exit all confirmed; `vox.ehpk` packs (31.7 KB). Discovered I-007: text-drawn box frames can't align on the G2 font.)*
 - [x] **P12** HUD Smart Idle *(complete 2026-05-14 — `/api/idle-suggestions` ranks unread-replies → quiet-streak contacts → compose + a status block; HUD render system redesigned to frame with real container `borderWidth` (I-007 resolved); Smart Idle page = title-bar + native scrollable suggestion list + footer, 3 bordered containers; status badges (NET/TWL/MAIL/BAT) live; tap routes to per-action stub pages; server CORS middleware added; verified on the simulator — renders cleanly, list selection highlight works, tap → stub routing confirmed; 95/95 server tests pass)*
-- [ ] **P13** HUD voice compose pipeline
+- [x] **P13** HUD voice compose pipeline *(complete 2026-05-14 — `AudioRecorder` (RMS meter + silence/max auto-stop, fallback for sim's empty mic buffer), `ComposePage` (recording/transcribing/error visual states, awaited mic control to avoid bridge races), `ConfirmPage` (atom rows TO/VIA/TONE/MSG with `*..` confidence dots, SUBJECT row for email intent, native list cursor + stub routing on each atom tap), `render.ts` HMR-safe createStartUp fallback + rebuild retry; entire app converted to a fixed 3-container shape (title-text c1 / list-c2 capture / footer-text c3) after discovering `rebuildPageContainer` can't reintroduce dropped container IDs; verified end-to-end on the simulator — Idle → scroll → tap → record → tap-stop → /api/compose round-trip → confirm renders atoms → TO-row tap → P14 stub. Two new G2 SDK quirks logged in LESSONSLEARNED §P13.)*
 - [ ] **P14** HUD tone picker + send
 - [ ] **P15** HUD inbox + reply
 - [ ] **P16** Voice-anywhere

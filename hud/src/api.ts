@@ -79,3 +79,34 @@ export const apiPostAudio = <T,>(path: string, audio: Uint8Array, fields: Record
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
   return hudApi<T>(path, { method: 'POST', rawBody: form });
 };
+
+/* --- /api/compose response shapes (mirror server/src/compose.ts) ---------- */
+
+export type Tone = 'casual' | 'professional' | 'friendly' | 'formal' | 'sarcastic' | 'grammar' | 'original';
+
+export interface IntentResult {
+  channel: 'sms' | 'email' | 'both' | 'ambiguous';
+  recipient_id: number | null;
+  recipient_name: string | null;
+  body: string;
+  subject: string | null;
+  language: string;
+  confidence: { recipient: 1 | 2 | 3; channel: 1 | 2 | 3; body: 1 | 2 | 3 };
+  candidates: number[];
+}
+
+export interface VariantResult {
+  tone: Tone;
+  text: string;
+  latency_ms: number;
+  error?: string;
+}
+
+export interface ComposeResult {
+  transcription: string;
+  stt_latency_ms: number;
+  language?: string;
+  intent: IntentResult | { error: string };
+  variants: VariantResult[];
+  total_latency_ms: number;
+}

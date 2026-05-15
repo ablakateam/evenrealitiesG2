@@ -397,7 +397,38 @@ This also has the nice side effect of letting `pm2 reload --update-env` take eff
 **Action:** Server endpoints backing a HUD screen return everything that screen needs in one response. No chatty per-widget fetches.
 
 ### P13 — HUD voice compose pipeline
-*(filled in on phase completion)*
+
+**2026-05-14 · ⚠ surprise · `rebuildPageContainer` can't introduce container IDs that a smaller prior rebuild dropped**
+
+**Learning:** The SDK docs describe `rebuildPageContainer` as "Replace the entire page — full redraw, all state is lost." In practice on the simulator (and almost certainly on hardware), shrinking the container set is one-way: a rebuild with `total=1, texts=1, lists=0` removes the other containers, and the next rebuild back to `total=3` returns `false` silently. The call resolves; no error throws; the page just never updates.
+
+Symptom that masked this for an hour: Smart Idle → tap Compose → recording screen rendered → auto-stop fired → `/api/compose` returned 200 with valid intent + 7 variants → confirm `Page.mount` log fired ("confirm page mounted") → but the screen stayed frozen on the transcribing copy. The bridge swallowed the rebuild with no signal until I logged the boolean return value.
+
+**Action:** Every page in the HUD uses the SAME 3-container shape: text c1 (title), list c2 (capture), text c3 (footer). Compose's "recording" state is encoded as 3 list items (greeting, blank, level meter) and the timer goes in the title — instead of a single full-screen text container. The 1Hz timer-label dedup keeps rebuild traffic to ~1/s during recording, not 4/s.
+
+**2026-05-14 · ⚠ surprise · firmware silently rejects list items longer than ~32 chars (docs claim 64)**
+
+**Learning:** SDK docs say `ListContainerProperty.itemContainer.itemName` accepts up to 64 chars per item. In practice, items at ~62 chars (Confirm's atom rows with the original `LABEL  value  ...padding...  ●●●` format) caused `rebuildPageContainer` to return `false`. Trimming each row to ≤32 chars made the rebuild succeed on the first try, no retry needed.
+
+**Action:** Confirm rows now render as `LABEL value___________________ ***` capped at 32 chars total. ASCII confidence dots (`***` / `**.` / `*..`) replaced the unicode bullets (`●●●` / `●●○` / `●○○`) — partly belt-and-braces (the G2 font may not have the bullet glyph), partly because trimming naturally enforced ASCII width.
+
+**2026-05-14 · ⚠ surprise · vite HMR resets `firstPageShown` but the sim keeps the original startup container**
+
+**Learning:** `render.ts` had `let firstPageShown = false`; first `showPage` call used `createStartUpPageContainer`, subsequent ones used `rebuildPageContainer`. After a vite HMR full reload, `firstPageShown` reset to `false` but the simulator's startup container was still alive — so the next boot's `createStartUpPageContainer` returned code `1` ("invalid params") and `showPage` returned `false`. The page never re-rendered after any HMR, which made the debug loop excruciating because every code edit dark-screened the sim.
+
+**Action:** `showPage` now treats a non-zero `createStartUpPageContainer` result as "already initialized" and falls through to `rebuildPageContainer` automatically. Same code path protects against any boot race on real hardware (e.g., if the firmware persists the prior session's container set across an app cold-start).
+
+**2026-05-14 · 💡 insight · sim automation has `up`/`down`/`click`/`double_click` — no scroll-into-view or list-item indexing**
+
+**Learning:** `POST /api/input` action vocabulary is exactly `up`, `down`, `click`, `double_click`. There is no `scroll_to(index)` or `select_item(index)`. To reach the 5th list item programmatically you send `down` four times then `click`. Useful detail for sim tests: query the server's `/api/idle-suggestions` first so the test knows the index of the target row before scrolling.
+
+**Action:** Documented the actual action list at the top of `hud/README.md`. Pattern for sim-driven flow tests: `GET /api/idle-suggestions` to discover the target index → repeated `POST /api/input down` → `POST /api/input click`. Also useful: `GET /api/console?since_id=N` for incremental log polling.
+
+**2026-05-14 · 💡 insight · macOS suspending the sim ≠ pausing the JS clock**
+
+**Learning:** `recorder.elapsedSeconds` is computed from `Date.now() - this.startedAt`, which is wall-clock. When macOS suspends the sim's webview process, the JS event loop pauses; but on resume, `Date.now()` jumps forward by the suspend duration and the `setInterval` callback fires immediately for each missed tick. `MAX_RECORDING_SECONDS` triggered "immediately" after wake, with no audio captured, which scrambled the debug trail until I noticed a 12,500-second gap between two adjacent console timestamps.
+
+**Action:** Lived with it for now — the actual production flow is fine because real users don't suspend mid-recording for hours. If it becomes a problem, switch to a monotonic-clock derivation that ignores wall-clock jumps (e.g., increment a counter inside the tick rather than reading `Date.now()`).
 
 ### P14 — HUD tone picker + send
 *(filled in on phase completion)*
