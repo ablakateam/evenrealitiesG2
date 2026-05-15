@@ -69,7 +69,7 @@ async function main(): Promise<void> {
   window.addEventListener('error', (e) => {
     void sendTelemetry({
       message: e.message,
-      stack: e.error instanceof Error ? e.error.stack : null,
+      stack: e.error instanceof Error ? (e.error.stack ?? null) : null,
       page: router.currentId,
     });
   });
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
     const reason = e.reason instanceof Error ? e.reason : null;
     void sendTelemetry({
       message: reason?.message ?? String(e.reason),
-      stack: reason?.stack ?? null,
+      stack: (reason?.stack ?? null) as string | null,
       page: router.currentId,
     });
   });

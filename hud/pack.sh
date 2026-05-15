@@ -12,6 +12,9 @@ cd "$(dirname "$0")"
 
 npm run build
 sed "s/YOUR_DOMAIN/${VOX_DOMAIN}/g" app.json > app.build.json
-evenhub pack app.build.json dist -o vox.ehpk
+# Prefer the user's npm-global bin so a non-login shell (CI, IDE) still
+# finds the CLI without relying on PATH inheritance.
+EVENHUB="${EVENHUB:-$(command -v evenhub || echo "$HOME/.npm-global/bin/evenhub")}"
+"$EVENHUB" pack app.build.json dist -o vox.ehpk
 rm -f app.build.json
 echo "✓ packed vox.ehpk (whitelist → https://${VOX_DOMAIN})"

@@ -131,7 +131,11 @@ async function render(ctx: PageContext): Promise<void> {
     footer = '[X2] back';
   } else {
     title = 'Hmm.';
-    items = ["Didn't quite catch that.", 'Try again or get more specific.'];
+    items = [
+      "Didn't quite catch that.",
+      'Try again or get more specific.',
+      errorMsg ? `(${errorMsg.slice(0, 60)})` : '',
+    ].filter(Boolean);
     footer = '[TAP] retry  [X2] back';
   }
   await showPage(ctx.bridge, {
@@ -266,7 +270,7 @@ async function dispatch(ctx: PageContext, action: VoiceAction, transcription: st
   }
 }
 
-function pageFor(target: VoiceAction extends { kind: 'navigate'; params: { target: infer T } } ? T : never): Page | null {
+function pageFor(target: string): Page | null {
   switch (target) {
     case 'idle':
       return IdlePage;
@@ -277,7 +281,7 @@ function pageFor(target: VoiceAction extends { kind: 'navigate'; params: { targe
     case 'contacts':
     case 'history':
     case 'templates':
-      return null; // P17 will surface these pages on the HUD
+      return null; // dedicated pages ship after the hardware test
     default:
       return null;
   }
