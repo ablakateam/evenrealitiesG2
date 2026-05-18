@@ -7,6 +7,7 @@ import {
   TextContainerUpgrade,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk';
+import { chromeHeaderBox, chromeFooterBox, type ChromeOpts } from './chrome.js';
 
 /**
  * HUD render system.
@@ -119,11 +120,21 @@ let firstPageShown = false;
 export interface PageSpec {
   texts?: TextBox[];
   lists?: ListBox[];
+  /**
+   * When set, the renderer auto-injects a persistent header + footer band
+   * (see `chrome.ts`). Pages that opt in should keep body containers within
+   * y = BODY_TOP..BODY_BOTTOM and avoid container IDs 90 / 99.
+   */
+  chrome?: ChromeOpts;
 }
 
 /** Render a page. Picks createStartUp vs rebuild automatically. */
 export async function showPage(bridge: EvenAppBridge, spec: PageSpec): Promise<boolean> {
-  const textObject = (spec.texts ?? []).map(textProp);
+  const bodyTexts = spec.texts ?? [];
+  const chromeTexts: TextBox[] = spec.chrome
+    ? [chromeHeaderBox(), chromeFooterBox(spec.chrome.hint)]
+    : [];
+  const textObject = [...bodyTexts, ...chromeTexts].map(textProp);
   const listObject = (spec.lists ?? []).map(listProp);
   const total = textObject.length + listObject.length;
 
@@ -165,4 +176,22 @@ export async function updateText(bridge: EvenAppBridge, id: number, content: str
 export function spread(left: string, right: string, width = 40): string {
   const gap = Math.max(1, width - left.length - right.length);
   return left + ' '.repeat(gap) + right;
+}
+
+/**
+ * Center each line of `text` within a roughly-`charWidth`-wide container.
+ *
+ * Measured on the simulator and confirmed against the chrome header which
+ * spans ~58 chars edge-to-edge: the G2 font renders at ~9.7px per char
+ * (NOT the 16px we initially assumed). A 576px container minus padding
+ * holds about 56 characters per line; default to that.
+ */
+export function center(text: string, charWidth = 100): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const pad = Math.max(0, Math.floor((charWidth - line.length) / 2));
+      return ' '.repeat(pad) + line;
+    })
+    .join('\n');
 }

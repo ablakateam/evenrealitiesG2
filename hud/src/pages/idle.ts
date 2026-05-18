@@ -1,57 +1,54 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage, updateText, spread } from '../render.js';
+import { showPage, center } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM, setAppStatus } from '../chrome.js';
 import { getPairing } from '../kvs.js';
 import { apiGet, HudApiError } from '../api.js';
 import { getBridge } from '../bridge.js';
-import { makeStubPage } from './stub.js';
 import { ComposePage } from './compose.js';
-import { InboxPage, type InboxItem } from './inbox.js';
-import { makeInboxReadPage } from './inbox-read.js';
-import { VoicePage } from './voice.js';
+import { Pulse } from '../pulse.js';
 
 /**
- * Smart Idle — the HUD's root screen.
+ * Idle — the calm front door of VOX.
  *
- * Anticipates intent instead of being a passive launcher: a server-ranked
- * suggestion list (unread replies → quiet-streak contacts → compose), a
- * title bar with live status badges, and a Today line. One round-trip to
- * /api/idle-suggestions powers the list + the status block; device battery
- * comes from getDeviceInfo().
+ * One real action: a big "tap to speak" capture surface. Above it, a calm
+ * breathing pulse (see `pulse.ts`) signals "VOX is alive and listening."
+ * Status lives in the chrome header; last sent / unread count lives in
+ * the chrome footer. Anything else — inbox, contacts, history — is one
+ * voice command away.
  *
- * Layout (576x288), three bordered containers:
- *   id 1  title bar   (text, no capture)
- *   id 2  suggestions (list, CAPTURE — native scroll + select)
- *   id 3  footer      (text, no capture)
+ * Layout (chrome adds id 90 + 99 automatically; body uses 2 + 3):
+ *   y BODY_TOP..+96             pulse        (id 2, text, no capture, animated)
+ *   y BODY_TOP+104..BODY_BOTTOM tap target   (id 3, text, CAPTURE)
  */
 
-type IdleAction =
-  | { kind: 'compose' }
-  | { kind: 'compose-to'; contact_id: number; name: string }
-  | { kind: 'reply'; inbox_id: number }
-  | { kind: 'voice' }
-  | { kind: 'open-inbox' };
+const PULSE_ID = 2;
+const TAP_ID = 3;
 
-interface IdleSuggestion {
-  id: string;
-  label: string;
-  action: IdleAction;
+interface IdleStatus {
+  twilio: boolean;
+  email: boolean;
+  unread: number;
 }
 
-interface IdleResponse {
-  suggestions: IdleSuggestion[];
-  status: {
-    twilio: boolean;
-    email: boolean;
-    today_sent: number;
-    today_failed: number;
-    unread: number;
-  };
+interface HistoryItem {
+  channel: 'sms' | 'email';
+  direction: 'out' | 'in';
+  body: string;
+  contact_name: string | null;
+  created_at: string;
+  status: string;
 }
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
+interface LastSent {
+  name: string;
+  body: string;
+  minutesAgo: number;
+  channel: 'sms' | 'email';
+}
+
+let lastSent: LastSent | null = null;
+let pulse: Pulse | null = null;
 
 export const IdlePage: Page = {
   id: 'idle',
@@ -63,90 +60,151 @@ export const IdlePage: Page = {
       return;
     }
 
-    // Fetch suggestions + status (one round-trip) and battery in parallel.
-    const [data, battery] = await Promise.all([fetchIdle(), fetchBattery()]);
+    await renderIdle(ctx);
+    pulse = new Pulse(ctx.bridge, PULSE_ID);
+    pulse.start();
 
-    // Prepend client-side voice + inbox shortcuts so they're always available
-    // without needing a server change. These come BEFORE the server's
-    // ranked suggestions so they're easy to reach (one tap from idle).
-    const clientSide: IdleSuggestion[] = [
-      { id: 'voice', label: '> Speak (voice)', action: { kind: 'voice' } },
-      { id: 'open-inbox', label: '> Open inbox', action: { kind: 'open-inbox' } },
-    ];
-    suggestionsCache = [...clientSide, ...(data?.suggestions ?? [])];
-
-    const items = suggestionsCache.map((s) => s.label);
-
-    await showPage(ctx.bridge, {
-      texts: [
-        { id: TITLE_ID, x: 0, y: 0, w: 576, h: 56, capture: false, content: titleBar(data, battery) },
-        { id: FOOTER_ID, x: 0, y: 230, w: 576, h: 58, capture: false, content: footer(data) },
-      ],
-      lists: [{ id: LIST_ID, x: 0, y: 60, w: 576, h: 166, capture: true, items }],
-    });
+    // Fire-and-forget refresh. When it lands, patch the chrome in place
+    // via the cached app-status (no re-mount, no flicker).
+    void refreshAndPatch(ctx);
   },
 
   async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
-    if (event.kind === 'list-select') {
-      const picked = suggestionsCache[event.index];
-      if (!picked) return;
-      await routeToAction(picked.action, ctx);
+    if (event.kind === 'tap' || event.kind === 'list-select') {
+      // Tap on Idle starts a fresh compose — the most common intent. The
+      // universal voice-command classifier (VoicePage) is reachable via
+      // an explicit "voice command" entry later if we add one back.
+      await ctx.router.push(ComposePage);
       return;
     }
     if (event.kind === 'foreground-enter') {
-      // Returning to the app — refresh suggestions.
       await IdlePage.mount(ctx);
     }
-    // scroll within the list is handled natively by the firmware
+  },
+
+  unmount(): void {
+    pulse?.stop();
+    pulse = null;
   },
 };
 
-/** Cache so a list-select event can map index → action. */
-let suggestionsCache: IdleSuggestion[] = [];
+async function renderIdle(ctx: PageContext): Promise<void> {
+  await showPage(ctx.bridge, {
+    texts: [
+      {
+        id: PULSE_ID,
+        x: 0,
+        y: BODY_TOP,
+        w: 576,
+        h: 96,
+        border: 0,
+        padding: 4,
+        capture: false,
+        content: Pulse.initialFrame(),
+      },
+      {
+        id: TAP_ID,
+        x: 0,
+        y: BODY_TOP + 104,
+        w: 576,
+        h: BODY_BOTTOM - (BODY_TOP + 104),
+        border: 0,
+        padding: 8,
+        capture: true,
+        content: center('\ntap to speak\n'),
+      },
+    ],
+    chrome: { hint: footerHint() },
+  });
+}
 
-async function routeToAction(action: IdleAction, ctx: PageContext): Promise<void> {
-  switch (action.kind) {
-    case 'voice':
-      await ctx.router.push(VoicePage);
-      break;
-    case 'open-inbox':
-      await ctx.router.push(InboxPage);
-      break;
-    case 'compose':
-      await ctx.router.push(ComposePage);
-      break;
-    case 'compose-to':
-      // TODO P17: pre-fill the recipient from action.contact_id. For now the
-      // voice compose flow runs and the confirm screen's TO atom is editable.
-      await ctx.router.push(ComposePage);
-      break;
-    case 'reply':
-      try {
-        const item = await apiGet<InboxItem>(`/api/inbox/${action.inbox_id}`);
-        await ctx.router.push(makeInboxReadPage(item));
-      } catch (err) {
-        const msg = err instanceof HudApiError ? err.message : 'Couldn\'t open that message.';
-        await ctx.router.push(makeStubPage('reply-err', 'Hmm.', msg));
-      }
-      break;
+async function renderUnpaired(ctx: PageContext): Promise<void> {
+  await showPage(ctx.bridge, {
+    texts: [
+      {
+        id: TAP_ID,
+        x: 0,
+        y: BODY_TOP,
+        w: 576,
+        h: BODY_BOTTOM - BODY_TOP,
+        border: 0,
+        padding: 8,
+        capture: true,
+        content: center('\n\nNot paired.\nOpen VOX on your phone to pair.'),
+      },
+    ],
+    chrome: { hint: '2x to exit' },
+  });
+}
+
+function footerHint(): string {
+  // User explicitly wants the footer to be ONLY last-sent (method + who +
+  // when). Unread/inbox state lives elsewhere — Idle stays calm.
+  if (!lastSent) return '';
+  const method = lastSent.channel === 'sms' ? 'SMS' : 'Email';
+  const ago = formatAgo(lastSent.minutesAgo);
+  // "just now" reads as a complete phrase already; "12m" needs the "ago" suffix.
+  const when = ago === 'just now' ? ago : `${ago} ago`;
+  return `${method} to ${lastSent.name} - ${when}`;
+}
+
+function formatAgo(minutes: number): string {
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+async function refreshAndPatch(ctx: PageContext): Promise<void> {
+  const [idleData, history, deviceInfo] = await Promise.all([
+    fetchIdleStatus(),
+    fetchLastSent(),
+    fetchBattery(),
+  ]);
+  setAppStatus({
+    twilio: idleData?.twilio ?? false,
+    email: idleData?.email ?? false,
+    battery: deviceInfo,
+    unread: idleData?.unread ?? 0,
+  });
+  if (history) lastSent = history;
+
+  // Re-render the page so the new chrome values land. Cheap — same shape
+  // as the initial mount, just different text content.
+  if (ctx.router.currentId === 'idle') {
+    await renderIdle(ctx);
   }
 }
 
-/**
- * Exposes a way for callers (voice-anywhere classifier later) to open the
- * inbox directly from any page. Kept here to avoid a circular import.
- */
-export function navigateToInbox(ctx: PageContext): Promise<void> {
-  return ctx.router.push(InboxPage);
-}
-
-async function fetchIdle(): Promise<IdleResponse | null> {
+async function fetchIdleStatus(): Promise<IdleStatus | null> {
   try {
-    return await apiGet<IdleResponse>('/api/idle-suggestions');
+    const data = await apiGet<{ status: IdleStatus }>('/api/idle-suggestions');
+    return data.status;
   } catch (err) {
     if (err instanceof HudApiError) {
-      console.warn(`[idle] suggestions fetch failed: ${err.code}`);
+      console.warn(`[idle] status fetch failed: ${err.code}`);
     }
+    return null;
+  }
+}
+
+async function fetchLastSent(): Promise<LastSent | null> {
+  try {
+    const data = await apiGet<{ items: HistoryItem[] }>('/api/history?limit=1&direction=out');
+    const item = data.items[0];
+    if (!item) return null;
+    const minutesAgo = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000),
+    );
+    return {
+      name: item.contact_name ?? 'someone',
+      body: item.body,
+      minutesAgo,
+      channel: item.channel,
+    };
+  } catch {
     return null;
   }
 }
@@ -160,37 +218,8 @@ async function fetchBattery(): Promise<number | null> {
   }
 }
 
-function titleBar(data: IdleResponse | null, battery: number | null): string {
-  const clock = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const net = data ? '●' : '○';
-  const twl = data?.status.twilio ? '●' : '○';
-  const mail = data?.status.email ? '●' : '○';
-  const bat = battery != null ? `${battery}%` : '--';
-  return `${spread('VOX', clock, 40)}\nNET ${net}  TWL ${twl}  MAIL ${mail}  BAT ${bat}`;
-}
-
-function footer(data: IdleResponse | null): string {
-  const today = data
-    ? `Today  ${data.status.today_sent} sent · ${data.status.today_failed} failed · ${data.status.unread} unread`
-    : 'Today  --';
-  return `${today}\n[TAP] open   [SCRL] move   [X2] exit`;
-}
-
-async function renderUnpaired(ctx: PageContext): Promise<void> {
-  await showPage(ctx.bridge, {
-    texts: [
-      { id: TITLE_ID, x: 0, y: 0, w: 576, h: 48, capture: false, content: 'VOX' },
-      {
-        id: LIST_ID,
-        x: 0,
-        y: 52,
-        w: 576,
-        h: 178,
-        capture: true,
-        content: '\n  Not paired.\n\n  Open the VOX dashboard on your phone\n  and scan the pairing QR.',
-      },
-      { id: FOOTER_ID, x: 0, y: 234, w: 576, h: 50, capture: false, content: '[X2] exit' },
-    ],
-  });
-  void updateText; // referenced for future in-place title-bar refresh
+/** Exposed for the voice-anywhere classifier — opens inbox from any page. */
+export async function navigateToInbox(ctx: PageContext): Promise<void> {
+  const { InboxPage } = await import('./inbox.js');
+  return ctx.router.push(InboxPage);
 }

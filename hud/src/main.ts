@@ -2,8 +2,20 @@ import { initBridge, normalizeEvent } from './bridge.js';
 import { Router } from './router.js';
 import { IdlePage } from './pages/idle.js';
 import { VoiceCuePage } from './pages/voice-cue.js';
-import { bootstrapPairingFromUrl, hasSeenVoiceCue, getPairing } from './kvs.js';
+import {
+  bootstrapPairingFromUrl,
+  bootstrapPairingFromEmbedded,
+  hasSeenVoiceCue,
+  getPairing,
+} from './kvs.js';
 import { hudApi } from './api.js';
+import { renderCompanion } from './companion/index.js';
+
+// If the Even Hub bridge isn't available within this many ms we assume we're
+// running in the phone WebView (no glasses connected) and switch to the
+// companion UI instead of the HUD. Glasses bridge typically resolves in
+// <500ms; 2500ms is generous for slow connections.
+const BRIDGE_TIMEOUT_MS = 2500;
 
 async function sendTelemetry(payload: { message: string; stack: string | null; page: string | null }): Promise<void> {
   try {
@@ -28,10 +40,31 @@ async function sendTelemetry(payload: { message: string; stack: string | null; p
  *   4. mount the Idle page
  */
 async function main(): Promise<void> {
-  const bridge = await initBridge();
+  // Race the glasses bridge against a short timeout. If the bridge throws,
+  // rejects, or just doesn't show up in time we're in the phone WebView —
+  // render the companion and stop. The catch on initBridge is essential —
+  // a throw in browser context (no host SDK injected) would otherwise
+  // bubble to main()'s rejection handler and skip the companion entirely.
+  const bridge = await Promise.race([
+    initBridge().catch((err) => {
+      console.warn('[vox-hub] bridge unavailable — phone-companion mode:', err);
+      return null;
+    }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), BRIDGE_TIMEOUT_MS)),
+  ]);
+  if (!bridge) {
+    const root = document.getElementById('app');
+    if (root) renderCompanion(root);
+    return;
+  }
 
   // Sideload bootstrap — `evenhub qr -u "<url>?server=...&secret=..."`
   await bootstrapPairingFromUrl();
+
+  // Single-tenant Private/Beta bake-in — `hud/.env` VITE_VOX_SERVER + VITE_VOX_SECRET
+  // are inlined at build time. If KVS is still empty, lift them in so the HUD
+  // boots paired on a fresh install. No-op if KVS already has a pairing.
+  await bootstrapPairingFromEmbedded();
 
   const router = new Router(bridge);
 
@@ -44,8 +77,17 @@ async function main(): Promise<void> {
     if (!event) return;
 
     if (event.kind === 'double-tap') {
-      // exitMode 1 = pop the foreground layer + let the user confirm exit
-      void bridge.shutDownPageContainer(1);
+      // Single-rule back: anywhere → Idle; on Idle → exit the app.
+      // We chose this over a per-step back stack because each flow page
+      // (Voice → Confirm → Send → Sent) has its own side-effects on
+      // re-mount (mic re-opens, drafts re-load), so stepping back through
+      // them felt buggier than just bouncing home. Even Hub submission
+      // requires the root double-tap to exit; that's still honored.
+      if (router.currentId === 'idle') {
+        void bridge.shutDownPageContainer(1);
+      } else {
+        void router.go(IdlePage);
+      }
       return;
     }
 

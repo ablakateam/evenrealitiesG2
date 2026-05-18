@@ -1,4 +1,5 @@
 import { getBridge } from './bridge.js';
+import { EMBEDDED_CONFIG } from './embedded-config.js';
 
 /**
  * Key-value store wrapper around bridge.setLocalStorage / getLocalStorage.
@@ -85,6 +86,26 @@ export async function bootstrapPairingFromUrl(): Promise<Pairing | null> {
     // window.location may be unavailable in some host contexts — non-fatal
   }
   return null;
+}
+
+/**
+ * Bootstrap pairing from values baked into the bundle at build time.
+ *
+ * Single-tenant Private/Beta builds embed the server URL + secret via Vite's
+ * VITE_VOX_SERVER / VITE_VOX_SECRET env vars (see `embedded-config.ts`). On
+ * first launch, if KVS is empty and the bundle carries both values, we lift
+ * them into KVS so subsequent launches behave identically to a properly
+ * paired device. No-op once KVS already has a pairing — user-driven pairing
+ * always wins.
+ */
+export async function bootstrapPairingFromEmbedded(): Promise<Pairing | null> {
+  const existing = await getPairing();
+  if (existing) return existing;
+  const { server, secret } = EMBEDDED_CONFIG;
+  if (!server || !secret) return null;
+  const pairing = { server, secret };
+  await setPairing(pairing);
+  return pairing;
 }
 
 /* --- One-time flags ------------------------------------------------------ */

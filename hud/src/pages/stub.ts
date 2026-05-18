@@ -1,41 +1,56 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage } from '../render.js';
+import { showPage, center } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 
 /**
- * Placeholder page factory.
+ * Placeholder page factory — used by error/incomplete flows to surface an
+ * "honest" message and offer back navigation.
  *
- * P12 wires Smart Idle's suggestion taps to real destinations, but the
- * compose / reply / contact flows land in P13–P15. Until then a tap routes
- * here — an honest "coming in P<n>" screen — and the back stack still works
- * (double-tap exits via the global gate; a single tap goes back).
+ * Uses the same canonical 2-text-container body shape (id 2 = title,
+ * id 3 = capture body) + chrome. Keeps the container-shape rule (L:38)
+ * satisfied across forward/back transitions between stub and any
+ * chrome-enabled page.
  */
+const TITLE_ID = 2;
+const BODY_ID = 3;
+
 export function makeStubPage(id: string, title: string, note: string): Page {
   return {
     id,
     async mount(ctx: PageContext): Promise<void> {
       await showPage(ctx.bridge, {
         texts: [
-          { id: 1, x: 0, y: 0, w: 576, h: 60, content: title, capture: false },
-          { id: 2, x: 0, y: 64, w: 576, h: 160, content: `\n  ${note}`, capture: true },
           {
-            id: 3,
+            id: TITLE_ID,
             x: 0,
-            y: 228,
+            y: BODY_TOP,
             w: 576,
-            h: 56,
-            content: '[TAP] back   [X2] exit',
+            h: 32,
+            border: 0,
+            padding: 4,
             capture: false,
+            content: center(title),
+          },
+          {
+            id: BODY_ID,
+            x: 0,
+            y: BODY_TOP + 40,
+            w: 576,
+            h: BODY_BOTTOM - (BODY_TOP + 40),
+            border: 0,
+            padding: 8,
+            capture: true,
+            content: center('\n' + note),
           },
         ],
+        chrome: { hint: 'tap to back   ·   2x to Idle' },
       });
     },
     async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
-      if (event.kind === 'tap') {
-        // Single tap → go back to the previous page (Smart Idle).
+      if (event.kind === 'tap' || event.kind === 'list-select') {
         await ctx.router.back();
       }
-      // double-tap is intercepted upstream as the exit gate
     },
   };
 }

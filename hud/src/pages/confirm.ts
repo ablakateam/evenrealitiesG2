@@ -1,41 +1,116 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage } from '../render.js';
-import { getDraft, getBodyText, type ComposeDraft } from '../draft.js';
-import { RecipientPickerPage } from './recipient-picker.js';
-import { ChannelPickerPage } from './channel-picker.js';
-import { TonePickerPage } from './tone-picker.js';
-import { SubjectPromptPage } from './subject-prompt.js';
-import { ComposePage } from './compose.js';
+import { showPage, updateText, center } from '../render.js';
+import { BODY_TOP } from '../chrome.js';
+import { getDraft, getBodyText, setTone, setRecipient, type ComposeDraft } from '../draft.js';
+import type { Tone } from '../api.js';
+import { apiGet, HudApiError } from '../api.js';
 import { sendDraft } from './send.js';
+import { IdlePage } from './idle.js';
 import { makeStubPage } from './stub.js';
 
 /**
- * Confirm page — the parsed-intent review screen.
+ * Confirm — review the rewritten message before sending.
  *
- * Singleton: reads from the shared compose-draft module on every mount, so
- * after a picker mutates the draft and pops back, the screen reflects the
- * edit. Each atom row (TO / VIA / TONE / MSG / SUBJECT for email) routes a
- * tap to its picker. The SEND row triggers the outbound call.
+ * Three modes, ALL rendered with the SAME container shape (4 text + 1
+ * capture list + 2 chrome) so we never re-introduce a dropped container ID
+ * across a back-pop (L:38 SDK quirk). The page never navigates to a
+ * separate picker — pickers are embedded as list-content swaps.
  *
- * Layout: same 3-container shape as the rest of the app (title-text c1,
- * list c2 capture, footer-text c3) — see LESSONSLEARNED §P13 for why.
+ *   ready (recipient resolved):
+ *     list = [tone1, tone2, ..., toneN, "── SEND ──"]
+ *     tap a tone → setTone() + updateText(BODY) in place
+ *     tap SEND → sendDraft()
+ *
+ *   needs-recipient (recipient_id missing):
+ *     list = ["pick recipient", "cancel"]
+ *     tap pick → switch to picking-recipient mode (fetches contacts)
+ *     tap cancel → router.go(IdlePage)
+ *
+ *   picking-recipient (in-place contact list):
+ *     list = [contactName, contactName, ..., "── cancel ──"]
+ *     tap a contact → setRecipient(), switch to ready mode
+ *     tap cancel → switch back to needs-recipient mode
+ *
+ * Layout (all fit BODY_TOP..256, never overlap chrome):
+ *   y  40– 62   title   (id 2, text)
+ *   y  64– 84   meta    (id 3, text)
+ *   y  86–186   body    (id 4, text, wrapped, ~5 visible lines)
+ *   y 188–256   list    (id 5, list, CAPTURE, ~3 items visible scrollable)
  */
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
+const TITLE_ID = 2;
+const META_ID = 3;
+const BODY_ID = 4;
+const LIST_ID = 5;
 
-type AtomKey = 'to' | 'via' | 'subject' | 'tone' | 'msg' | 'send';
+// Layout: two per-mode geometries that share the same container IDs so
+// the rebuild-shape rule (L:38) holds across mode flips. Each text
+// container needs ~26px to hold a line without vertical clipping.
+//
+//   ready / needs-recipient — body bordered, ~3-line preview, list ~4 visible:
+//     y 40–66    title
+//     y 68–94    meta
+//     y 100–156  body (border 1, 3 lines)
+//     y 160–256  list (~4 items visible scrollable)
+//
+//   picking-recipient — body collapsed to a one-line helper, list dominates:
+//     y 40–66    title
+//     y 68–94    meta
+//     y 96–116   body (no border, single helper line)
+//     y 118–256  list (~5 items visible scrollable)
+const TITLE_Y = BODY_TOP;             // 40
+const TITLE_H = 26;
+const META_Y = TITLE_Y + TITLE_H + 2; // 68
+const META_H = 26;
 
-interface Atom {
-  key: AtomKey;
-  label: string;
+const READY_BODY_Y = META_Y + META_H + 6;   // 100
+const READY_BODY_H = 62;                    // 100..162 — fits 2 wrapped lines + breathing room
+const READY_LIST_Y = READY_BODY_Y + READY_BODY_H + 4; // 166
+const READY_LIST_H = 90;                    // 166..256 — ~3 items visible
+
+// Picker collapses body to an invisible 4px spacer so the list dominates.
+// Same container IDs as ready mode preserves the shape rule (L:38).
+const PICKER_BODY_Y = META_Y + META_H + 2;  // 96
+const PICKER_BODY_H = 4;                    // 96..100 (effectively invisible)
+const PICKER_LIST_Y = PICKER_BODY_Y + PICKER_BODY_H + 2; // 102
+const PICKER_LIST_H = 154;                  // 102..256
+
+const BODY_WRAP = 32;
+const BODY_MAX_LINES = 2; // matches READY_BODY_H — anything longer truncates with "..."
+
+const TONE_ORDER: Tone[] = [
+  'casual',
+  'professional',
+  'friendly',
+  'formal',
+  'sarcastic',
+  'grammar',
+  'original',
+];
+
+const SEND_LABEL = '── SEND ──';
+const PICK_LABEL = 'pick recipient';
+const CANCEL_LABEL = 'cancel';
+const PICKING_CANCEL_LABEL = '── cancel ──';
+
+const MAX_CONTACTS_VISIBLE = 19; // 20-item list cap, save one for cancel
+
+type Mode = 'ready' | 'needs-recipient' | 'picking-recipient';
+
+interface PickerContact {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
 }
 
-// Build atoms list dynamically — kept in module state so onEvent can map
-// the list-select index back to the atom it represents.
-let atoms: Atom[] = [];
+// Module state — what the list represents at render time. onEvent uses this
+// to map a list-select index back to an action.
+let mode: Mode = 'ready';
+let listTones: Tone[] = [];
+let pickerRows: PickerContact[] = [];
+let pickerError: string | null = null;
 
 export const ConfirmPage: Page = {
   id: 'confirm',
@@ -43,92 +118,204 @@ export const ConfirmPage: Page = {
   async mount(ctx: PageContext): Promise<void> {
     const draft = getDraft();
     if (!draft) {
-      // Defensive: confirm reached without a draft — drop to a stub.
-      await ctx.router.go(makeStubPage('confirm-empty', 'Hmm.', "Nothing to confirm — start a new compose."));
+      await ctx.router.push(
+        makeStubPage('confirm-empty', 'Hmm.', 'Nothing to confirm — start a new compose.'),
+      );
       return;
     }
-
-    atoms = buildAtoms(draft);
-    const isEmail = draft.channel === 'email';
-    const title = draft.replyContext
-      ? `Reply to ${clip(draft.replyContext.from_name, 32)}`
-      : isEmail
-        ? 'Send this email?'
-        : 'Send this?';
-    await showPage(ctx.bridge, {
-      texts: [
-        { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: title },
-        { id: FOOTER_ID, x: 0, y: 236, w: 576, h: 48, capture: false, content: `[SCRL] move  [TAP] pick  [X2] cancel` },
-      ],
-      lists: [{ id: LIST_ID, x: 0, y: 48, w: 576, h: 184, capture: true, items: atoms.map((a) => a.label) }],
-    });
+    await render(ctx, draft);
   },
 
   async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
     if (event.kind !== 'list-select') return;
-    const atom = atoms[event.index];
-    if (!atom) return;
     const draft = getDraft();
-    switch (atom.key) {
-      case 'to':
-        if (draft?.locked.recipient) return; // reply flow — TO is locked
-        await ctx.router.push(RecipientPickerPage);
-        break;
-      case 'via':
-        if (draft?.locked.channel) return; // reply flow — VIA is locked
-        await ctx.router.push(ChannelPickerPage);
-        break;
-      case 'subject':
-        await ctx.router.push(SubjectPromptPage);
-        break;
-      case 'tone':
-        await ctx.router.push(TonePickerPage);
-        break;
-      case 'msg':
-        // Re-record — push compose page; on its completion it'll set a new
-        // draft and replace the current page with ConfirmPage again.
-        await ctx.router.push(ComposePage);
-        break;
-      case 'send':
-        await sendDraft(ctx);
-        break;
+    if (!draft) return;
+
+    if (mode === 'needs-recipient') {
+      // Items are [PICK_LABEL, CANCEL_LABEL] in that order.
+      if (event.index === 0) {
+        await enterPickingRecipient(ctx, draft);
+      } else {
+        await ctx.router.go(IdlePage);
+      }
+      return;
+    }
+
+    if (mode === 'picking-recipient') {
+      // Items are [contactName, contactName, ..., PICKING_CANCEL_LABEL].
+      if (event.index >= 0 && event.index < pickerRows.length) {
+        const picked = pickerRows[event.index]!;
+        setRecipient({
+          id: picked.id,
+          name: picked.name,
+          phone: picked.phone,
+          email: picked.email,
+        });
+        // Exit picker mode explicitly so render() flips to ready/needs based
+        // on the new draft state.
+        mode = 'ready';
+        const fresh = getDraft();
+        if (!fresh) return;
+        await render(ctx, fresh);
+      } else if (event.index === pickerRows.length) {
+        // Cancel back to needs-recipient (or ready if draft happens to be).
+        mode = isReady(draft) ? 'ready' : 'needs-recipient';
+        await render(ctx, draft);
+      }
+      return;
+    }
+
+    // mode === 'ready': items are [SEND_LABEL, ...listTones]. SEND is now
+    // at index 0 — first thing the cursor lands on — so the user never has
+    // to scroll past the tone list to reach it.
+    if (event.index === 0) {
+      await sendDraft(ctx);
+      return;
+    }
+    const toneIndex = event.index - 1;
+    if (toneIndex >= 0 && toneIndex < listTones.length) {
+      const newTone = listTones[toneIndex]!;
+      if (newTone !== draft.tone) {
+        setTone(newTone);
+        const fresh = getDraft();
+        if (!fresh) return;
+        // Patch the parts that depend on tone — body + meta — and re-render
+        // the list so the cursor marker moves to the new selection.
+        await updateText(ctx.bridge, BODY_ID, wrapBody(getBodyText(fresh)));
+        await updateText(ctx.bridge, META_ID, metaLine(fresh));
+        await render(ctx, fresh);
+      }
     }
   },
 };
 
-/* --- helpers ------------------------------------------------------------- */
+async function enterPickingRecipient(ctx: PageContext, draft: ComposeDraft): Promise<void> {
+  // Render an interim "loading contacts" state so the user sees feedback
+  // immediately while we hit /api/contacts. Then re-render with the list.
+  pickerError = null;
+  pickerRows = [];
+  mode = 'picking-recipient';
+  await renderPickingPlaceholder(ctx);
 
-function buildAtoms(draft: ComposeDraft): Atom[] {
-  const isEmail = draft.channel === 'email';
-  const out: Atom[] = [];
-  // Locked rows show 3-dot confidence and a `=` prefix instead of the label.
-  // Picker is no-op when locked (see onEvent guard).
-  const toConf = draft.locked.recipient ? 3 : draft.baseIntent.confidence.recipient;
-  const viaConf = draft.locked.channel ? 3 : draft.baseIntent.confidence.channel;
-  out.push({
-    key: 'to',
-    label: row(draft.locked.recipient ? '=TO' : 'TO', draft.recipient.name ?? '(pick)', toConf),
-  });
-  if (isEmail) {
-    out.push({
-      key: 'subject',
-      label: row('SUBJ', draft.subject ?? '(none)', draft.subject ? 3 : 1),
-    });
+  try {
+    const data = await apiGet<{ items: Array<{ id: number; name: string; phone_e164: string | null; email: string | null }> }>(
+      '/api/contacts?limit=50',
+    );
+    pickerRows = data.items.slice(0, MAX_CONTACTS_VISIBLE).map((c) => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone_e164,
+      email: c.email,
+    }));
+  } catch (err) {
+    pickerError = err instanceof HudApiError ? `contacts: ${err.code}` : 'network error';
   }
-  out.push({
-    key: 'via',
-    label: row(draft.locked.channel ? '=VIA' : 'VIA', channelLabel(draft.channel), viaConf),
+  await render(ctx, draft);
+}
+
+async function renderPickingPlaceholder(ctx: PageContext): Promise<void> {
+  await showPage(ctx.bridge, {
+    texts: [
+      { id: TITLE_ID, x: 0, y: TITLE_Y, w: 576, h: TITLE_H, border: 0, padding: 4, capture: false, content: center('pick recipient') },
+      { id: META_ID,  x: 0, y: META_Y,  w: 576, h: META_H,  border: 0, padding: 4, capture: false, content: center('loading contacts...') },
+      { id: BODY_ID,  x: 0, y: PICKER_BODY_Y, w: 576, h: PICKER_BODY_H, border: 0, padding: 4, capture: false, content: '' },
+    ],
+    lists: [
+      { id: LIST_ID, x: 0, y: PICKER_LIST_Y, w: 576, h: PICKER_LIST_H, border: 1, padding: 6, capture: true, items: ['...'] },
+    ],
+    chrome: { hint: '2x to cancel' },
   });
-  out.push({ key: 'tone', label: row('TONE', toneLabel(draft.tone), 2) });
-  out.push({
-    key: 'msg',
-    label: row(isEmail ? 'BODY' : 'MSG', clip(getBodyText(draft), 22), draft.baseIntent.confidence.body),
+}
+
+/* --- render ----------------------------------------------------------- */
+
+async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
+  // Picker mode keeps its own state until the user picks or cancels —
+  // don't auto-flip back to ready/needs based on draft readiness while
+  // the user is still inside the picker.
+  if (mode !== 'picking-recipient') {
+    mode = isReady(draft) ? 'ready' : 'needs-recipient';
+  }
+
+  let items: string[];
+  let title: string;
+  let meta: string;
+  let body: string;
+  let hint: string;
+  let bodyBorder = 1;
+  let bodyY = READY_BODY_Y;
+  let bodyH = READY_BODY_H;
+  let listY = READY_LIST_Y;
+  let listH = READY_LIST_H;
+
+  if (mode === 'picking-recipient') {
+    listTones = [];
+    if (pickerError) {
+      items = [pickerError, PICKING_CANCEL_LABEL];
+    } else {
+      items = pickerRows.map(formatContactRow).concat([PICKING_CANCEL_LABEL]);
+    }
+    title = center('pick recipient');
+    meta = center(`${pickerRows.length} contacts${pickerError ? ' (error)' : ''}`);
+    body = ''; // body is collapsed to a 4px spacer in picker mode
+    bodyBorder = 0;
+    bodyY = PICKER_BODY_Y;
+    bodyH = PICKER_BODY_H;
+    listY = PICKER_LIST_Y;
+    listH = PICKER_LIST_H;
+    hint = 'tap to pick   ·   2x to cancel';
+  } else if (mode === 'ready') {
+    listTones = availableTones(draft);
+    // SEND at the TOP so it's the first thing under the cursor — earlier
+    // we buried it at the bottom of 7 tones and the user couldn't reach
+    // it without ~5 scrolls.
+    items = [SEND_LABEL].concat(
+      listTones.map((t) => (t === draft.tone ? `> ${capitalize(t)}` : `  ${capitalize(t)}`)),
+    );
+    title = center(titleLine(draft, true));
+    meta = center(metaLine(draft));
+    body = wrapBody(getBodyText(draft));
+    hint = 'tap SEND or pick a tone   ·   2x to cancel';
+  } else {
+    listTones = [];
+    items = [PICK_LABEL, CANCEL_LABEL];
+    title = center(titleLine(draft, false));
+    meta = center(metaLine(draft));
+    body = wrapBody(getBodyText(draft));
+    hint = 'no recipient — pick one';
+  }
+
+  await showPage(ctx.bridge, {
+    texts: [
+      { id: TITLE_ID, x: 0, y: TITLE_Y, w: 576, h: TITLE_H, border: 0, padding: 4, capture: false, content: title },
+      { id: META_ID,  x: 0, y: META_Y,  w: 576, h: META_H,  border: 0, padding: 4, capture: false, content: meta },
+      { id: BODY_ID,  x: 0, y: bodyY,   w: 576, h: bodyH,   border: bodyBorder, padding: 8, capture: false, content: body },
+    ],
+    lists: [
+      { id: LIST_ID, x: 0, y: listY, w: 576, h: listH, border: 1, padding: 6, capture: true, items },
+    ],
+    chrome: { hint },
   });
-  // Send row uses no dots — its readiness is reflected by whether everything
-  // above resolved (TO present, channel reachable).
-  const ready = isReady(draft);
-  out.push({ key: 'send', label: ready ? '--  SEND  --' : '--  SEND (fix above) --' });
-  return out;
+}
+
+function formatContactRow(c: PickerContact): string {
+  const hint = c.phone && c.email ? 'PH+EM' : c.phone ? 'PH' : c.email ? 'EM' : '--';
+  const name = c.name.length > 22 ? c.name.slice(0, 21) + '~' : c.name;
+  return `${name.padEnd(22)} ${hint}`;
+}
+
+function titleLine(draft: ComposeDraft, ready: boolean): string {
+  if (!ready) return 'pick a recipient';
+  if (draft.replyContext) return `reply to ${draft.replyContext.from_name}`;
+  if (draft.recipient.name) return `send to ${draft.recipient.name}`;
+  return 'send';
+}
+
+function metaLine(draft: ComposeDraft): string {
+  const channel =
+    draft.channel === 'sms' ? 'SMS' : draft.channel === 'email' ? 'Email' : 'SMS+Email';
+  const tone = capitalize(draft.tone);
+  return `${channel}  ·  ${tone}`;
 }
 
 function isReady(draft: ComposeDraft): boolean {
@@ -138,28 +325,50 @@ function isReady(draft: ComposeDraft): boolean {
   return true;
 }
 
-/** One atom row: `LABEL value___________________ ***` — capped at 32 chars. */
-function row(label: string, value: string, confidence: 1 | 2 | 3): string {
-  const dots = confidence === 3 ? '***' : confidence === 2 ? '**.' : '*..';
-  const v = value.length > 22 ? value.slice(0, 21) + '~' : value;
-  return `${label.padEnd(5)} ${v.padEnd(22)} ${dots}`;
+function availableTones(draft: ComposeDraft): Tone[] {
+  return TONE_ORDER.filter((t) =>
+    draft.variants.some((v) => v.tone === t && !v.error && v.text),
+  );
 }
 
-function channelLabel(channel: ComposeDraft['channel']): string {
-  switch (channel) {
-    case 'sms':
-      return 'SMS';
-    case 'email':
-      return 'Email';
-    case 'both':
-      return 'SMS+Email';
+/* --- body wrapping ---------------------------------------------------- */
+
+function wrapBody(body: string): string {
+  const lines = wordWrap(body, BODY_WRAP);
+  if (lines.length <= BODY_MAX_LINES) return lines.join('\n');
+  const head = lines.slice(0, BODY_MAX_LINES - 1).join('\n');
+  const tail = lines.slice(BODY_MAX_LINES - 1).join(' ');
+  return head + '\n' + truncate(tail, BODY_WRAP - 3) + '...';
+}
+
+function wordWrap(text: string, width: number): string[] {
+  const out: string[] = [];
+  for (const para of text.split(/\r?\n/)) {
+    if (para.length === 0) {
+      out.push('');
+      continue;
+    }
+    const words = para.split(/\s+/);
+    let line = '';
+    for (const word of words) {
+      if (!line) {
+        line = word.slice(0, width);
+      } else if (line.length + 1 + word.length <= width) {
+        line += ' ' + word;
+      } else {
+        out.push(line);
+        line = word.slice(0, width);
+      }
+    }
+    if (line) out.push(line);
   }
+  return out;
 }
 
-function toneLabel(tone: ComposeDraft['tone']): string {
-  return tone[0]!.toUpperCase() + tone.slice(1);
+function capitalize(s: string): string {
+  return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
 }
 
-function clip(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + '~' : s;
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, Math.max(0, max - 1)) + '~' : s;
 }

@@ -1,6 +1,7 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage } from '../render.js';
+import { showPage, updateText, center } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 import { AudioRecorder, formatElapsed } from '../audio.js';
 import { hudApi, apiPostAudio, HudApiError, type ComposeResult } from '../api.js';
 import { setDraftFromCompose } from '../draft.js';
@@ -8,37 +9,30 @@ import { ConfirmPage } from './confirm.js';
 import { makeStubPage } from './stub.js';
 
 /**
- * Compose page — capture voice, transcribe, hand off to the confirm screen.
+ * Compose — capture voice, transcribe + parse + rewrite via /api/compose,
+ * hand off to the Confirm screen.
  *
  * State machine:
- *   recording    — mic open, live RMS meter + timer, tap to stop
- *   transcribing — mic closed, POST to /api/compose, "one sec" copy
- *   error        — couldn't transcribe; tap to retry, double-tap exits
+ *   recording    — mic open, live RMS meter + timer, tap stops
+ *   transcribing — POST in flight, "one sec" copy
+ *   error        — failed; tap to retry
  *
- * Layout: 3 containers (title text c1, list c2 capture, footer text c3),
- * matching Idle and Confirm. We learned the hard way (L:38) that
- * rebuildPageContainer silently returns `false` when it has to introduce
- * container IDs that were dropped by a prior smaller rebuild — so every
- * page in the app keeps the same shape and only swaps content.
+ * Layout matches the Voice page (title + capture-surface body + chrome
+ * footer hint). The meter is patched in place via textContainerUpgrade at
+ * 4 Hz — flicker-free.
  *
- * Tick dedup: the timer label drives rebuilds; we only re-render when the
- * mm:ss string changes (≤1 Hz), not every 250 ms tick.
- *
- * Headless-simulator note: the simulator has no mic, so `audioControl`
- * yields no audioEvents and the recorder stays empty. When that happens we
- * fall back to the JSON path of /api/compose with a sample transcription
- * (gated on `recorder.isEmpty`). On real hardware the mic fills the buffer
- * and the multipart-audio path runs.
+ * Headless-simulator note: the sim has no mic; if `recorder.isEmpty` when
+ * we stop, we fall back to the JSON path of /api/compose with a stock
+ * transcription so the rest of the flow remains exercisable.
  */
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
+const TITLE_ID = 2;
+const METER_ID = 3;
+
 const MAX_RECORDING_SECONDS = 60;
-const SILENCE_AUTOSTOP_SECONDS = 4;
+const SILENCE_AUTOSTOP_SECONDS = 6;
 const TICK_MS = 250;
 
-const TRANSCRIBING_COPY = ['Reading your voice...', 'One sec...', 'Got that down...'];
 const SIM_FALLBACK_TRANSCRIPTION =
   'send a text to alex saying running about ten minutes late, sorry';
 
@@ -48,7 +42,6 @@ let state: State = 'recording';
 let recorder = new AudioRecorder();
 let tick: ReturnType<typeof setInterval> | null = null;
 let errorMsg = '';
-let lastTimerLabel = ''; // dedup at second-resolution so we rebuild ≤1 Hz
 
 export const ComposePage: Page = {
   id: 'compose',
@@ -63,16 +56,9 @@ export const ComposePage: Page = {
     recorder = new AudioRecorder();
     recorder.start();
     errorMsg = '';
-    lastTimerLabel = formatElapsed(0);
 
-    // 3-container layout that matches Idle + Confirm. The SDK can't expand
-    // container count via rebuildPageContainer once it has been shrunk, so
-    // every page in the app uses (title-text c1, list c2 capture, footer-
-    // text c3) and only the content changes between pages.
-    await renderRecording(ctx, 'recording');
+    await render(ctx);
 
-    // Mic control is awaited (concurrent bridge ops can stall the next
-    // rebuild), then the tick takes over.
     try {
       await ctx.bridge.audioControl(true);
     } catch (err) {
@@ -81,11 +67,8 @@ export const ComposePage: Page = {
 
     tick = setInterval(() => {
       if (state !== 'recording') return;
-      const label = formatElapsed(recorder.elapsedSeconds);
-      if (label !== lastTimerLabel) {
-        lastTimerLabel = label;
-        void renderRecording(ctx, 'recording');
-      }
+      // Live meter patch — only updates the meter container.
+      void updateText(ctx.bridge, METER_ID, meterContent());
       if (recorder.elapsedSeconds >= MAX_RECORDING_SECONDS) {
         void stopAndTranscribe(ctx);
       } else if (!recorder.isEmpty && recorder.silenceSeconds >= SILENCE_AUTOSTOP_SECONDS) {
@@ -99,8 +82,6 @@ export const ComposePage: Page = {
       recorder.addChunk(event.pcm);
       return;
     }
-    // The recording-state list is event-capture, so taps arrive as
-    // 'list-select' (no useful index). Either kind = "tap" on this page.
     if (event.kind === 'tap' || event.kind === 'list-select') {
       if (state === 'recording') {
         await stopAndTranscribe(ctx);
@@ -116,6 +97,63 @@ export const ComposePage: Page = {
   },
 };
 
+function meterContent(): string {
+  // Meter is 16 chars wide; timer is 4 chars (e.g. "0:03"). Both centered
+  // within the ~100-"char" body line (matches center() in render.ts —
+  // leading-space units, not visible chars).
+  const CHAR_WIDTH = 100;
+  const meterPad = ' '.repeat(Math.max(0, Math.floor((CHAR_WIDTH - 16) / 2)));
+  const timer = formatElapsed(recorder.elapsedSeconds);
+  const timerPad = ' '.repeat(Math.max(0, Math.floor((CHAR_WIDTH - timer.length) / 2)));
+  return `\n${meterPad}${recorder.meter()}\n\n${timerPad}${timer}`;
+}
+
+async function render(ctx: PageContext): Promise<void> {
+  let title: string;
+  let body: string;
+  let hint: string;
+  if (state === 'recording') {
+    title = 'listening';
+    body = meterContent();
+    hint = 'tap to stop   ·   2x to cancel';
+  } else if (state === 'transcribing') {
+    title = 'one sec...';
+    body = center('\n\nreading your voice');
+    hint = '';
+  } else {
+    title = 'hmm';
+    body = center(`\ncouldn't catch that.\n${errorMsg ? errorMsg.slice(0, 60) : ''}`);
+    hint = 'tap to retry   ·   2x to cancel';
+  }
+  await showPage(ctx.bridge, {
+    texts: [
+      {
+        id: TITLE_ID,
+        x: 0,
+        y: BODY_TOP,
+        w: 576,
+        h: 48,
+        border: 0,
+        padding: 4,
+        capture: false,
+        content: center(title),
+      },
+      {
+        id: METER_ID,
+        x: 0,
+        y: BODY_TOP + 56,
+        w: 576,
+        h: BODY_BOTTOM - (BODY_TOP + 56),
+        border: 0,
+        padding: 8,
+        capture: true,
+        content: body,
+      },
+    ],
+    chrome: { hint },
+  });
+}
+
 async function stopAndTranscribe(ctx: PageContext): Promise<void> {
   if (state !== 'recording') return;
   state = 'transcribing';
@@ -128,69 +166,43 @@ async function stopAndTranscribe(ctx: PageContext): Promise<void> {
   } catch (err) {
     console.warn('[compose] audioControl(false) failed:', err);
   }
-
-  await renderRecording(ctx, 'transcribing');
+  await render(ctx);
 
   try {
     const result = await transcribe();
     const draft = setDraftFromCompose(result);
     if (!draft) {
-      await ctx.router.go(
-        makeStubPage('confirm-error', 'Hmm.', `Couldn't read that as a message.\n"${result.transcription.slice(0, 80)}"`),
+      await ctx.router.push(
+        makeStubPage(
+          'compose-empty',
+          'Hmm.',
+          `Couldn't read that as a message.\n"${result.transcription.slice(0, 80)}"`,
+        ),
       );
       return;
     }
-    await ctx.router.go(ConfirmPage);
+    await ctx.router.push(ConfirmPage);
   } catch (err) {
     console.error('[compose] transcribe failed:', err);
     state = 'error';
     errorMsg =
       err instanceof HudApiError ? err.message : err instanceof Error ? err.message : 'transcription failed';
-    await renderRecording(ctx, 'error');
+    await render(ctx);
   }
 }
 
 async function transcribe(): Promise<ComposeResult> {
-  if (recorder.isEmpty) {
-    console.warn('[compose] no audio captured — using sim fallback transcription');
+  // Anything under ~2 KB of PCM (~125ms at 16kHz mono 16-bit) is too short
+  // for Whisper to do anything useful — happens on the simulator with no
+  // mic, or if the user taps stop instantly. Fall back to a stock
+  // transcription so the rest of the flow stays exercisable end-to-end.
+  const MIN_PCM_BYTES = 2048;
+  if (recorder.isEmpty || recorder.byteLength < MIN_PCM_BYTES) {
+    console.warn(`[compose] only ${recorder.byteLength}B captured — using fallback transcription`);
     return hudApi<ComposeResult>('/api/compose', {
       method: 'POST',
       body: { transcription: SIM_FALLBACK_TRANSCRIPTION },
     });
   }
   return apiPostAudio<ComposeResult>('/api/compose', recorder.toBuffer(), { is_raw_pcm: 'true' });
-}
-
-/**
- * Render the 3-container compose page in any of its visual states.
- * Same container shape as Idle and Confirm — keeps the SDK happy.
- */
-async function renderRecording(
-  ctx: PageContext,
-  visual: 'recording' | 'transcribing' | 'error',
-): Promise<void> {
-  let title: string;
-  let items: string[];
-  let footer: string;
-  if (visual === 'recording') {
-    title = `REC  ${formatElapsed(recorder.elapsedSeconds)}`;
-    items = ["Go ahead, I'm with you.", '', recorder.meter()];
-    footer = '[TAP] stop   [X2] cancel';
-  } else if (visual === 'transcribing') {
-    const copy = TRANSCRIBING_COPY[Math.floor(Math.random() * TRANSCRIBING_COPY.length)]!;
-    title = 'transcribing';
-    items = [copy];
-    footer = '[X2] cancel';
-  } else {
-    title = 'Hmm.';
-    items = ["Couldn't catch that.", errorMsg];
-    footer = '[TAP] retry   [X2] cancel';
-  }
-  await showPage(ctx.bridge, {
-    texts: [
-      { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: title },
-      { id: FOOTER_ID, x: 0, y: 236, w: 576, h: 48, capture: false, content: footer },
-    ],
-    lists: [{ id: LIST_ID, x: 0, y: 48, w: 576, h: 184, capture: true, items }],
-  });
 }

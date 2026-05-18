@@ -1,6 +1,7 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage } from '../render.js';
+import { showPage, updateText } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 import { AudioRecorder, formatElapsed } from '../audio.js';
 import {
   apiPost,
@@ -37,12 +38,11 @@ import { makeStubPage } from './stub.js';
  * shape-invariant from P13/§LESSONSLEARNED.
  */
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
+const TITLE_ID = 2;
+const METER_ID = 3;
 
 const MAX_RECORDING_SECONDS = 30;
-const SILENCE_AUTOSTOP_SECONDS = 3;
+const SILENCE_AUTOSTOP_SECONDS = 6;
 const TICK_MS = 250;
 const SIM_FALLBACK_UTTERANCE = 'open inbox';
 
@@ -80,10 +80,12 @@ export const VoicePage: Page = {
 
     tick = setInterval(() => {
       if (state !== 'recording') return;
+      // Live-patch the meter container every tick — flicker-free since it's
+      // a textContainerUpgrade, not a full rebuild.
+      void updateText(ctx.bridge, METER_ID, meterContent());
       const label = formatElapsed(recorder.elapsedSeconds);
       if (label !== lastTimerLabel) {
         lastTimerLabel = label;
-        void render(ctx);
       }
       if (recorder.elapsedSeconds >= MAX_RECORDING_SECONDS) {
         void stopAndDispatch(ctx);
@@ -113,37 +115,58 @@ export const VoicePage: Page = {
   },
 };
 
+function meterContent(): string {
+  // Two-line block: the live amplitude meter, then the elapsed time.
+  return `\n     ${recorder.meter()}\n\n        ${formatElapsed(recorder.elapsedSeconds)}`;
+}
+
 async function render(ctx: PageContext): Promise<void> {
   let title: string;
-  let items: string[];
-  let footer: string;
+  let body: string;
+  let hint: string;
   if (state === 'recording') {
-    title = `SPEAK  ${formatElapsed(recorder.elapsedSeconds)}`;
-    items = ['Try: "open inbox"', '"send dan running late"', '"save 415-555-0142 as mom"'];
-    footer = '[TAP] stop   [X2] cancel';
+    title = 'listening';
+    body = meterContent();
+    hint = 'tap to stop';
   } else if (state === 'thinking') {
     title = 'thinking';
-    items = ['picking the right words...'];
-    footer = '[X2] cancel';
+    body = '\n\n        one sec...';
+    hint = '';
   } else if (state === 'done') {
-    title = 'done';
-    items = ['ok'];
-    footer = '[X2] back';
+    title = 'got it';
+    body = '\n\n        ok';
+    hint = '';
   } else {
-    title = 'Hmm.';
-    items = [
-      "Didn't quite catch that.",
-      'Try again or get more specific.',
-      errorMsg ? `(${errorMsg.slice(0, 60)})` : '',
-    ].filter(Boolean);
-    footer = '[TAP] retry  [X2] back';
+    title = 'hmm';
+    body = `\n   didn't quite catch that.\n   ${errorMsg ? errorMsg.slice(0, 60) : ''}`;
+    hint = 'tap to retry';
   }
   await showPage(ctx.bridge, {
     texts: [
-      { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: title },
-      { id: FOOTER_ID, x: 0, y: 236, w: 576, h: 48, capture: false, content: footer },
+      {
+        id: TITLE_ID,
+        x: 0,
+        y: BODY_TOP,
+        w: 576,
+        h: 48,
+        border: 0,
+        padding: 4,
+        capture: false,
+        content: `        ${title}`,
+      },
+      {
+        id: METER_ID,
+        x: 0,
+        y: BODY_TOP + 56,
+        w: 576,
+        h: BODY_BOTTOM - (BODY_TOP + 56),
+        border: 0,
+        padding: 8,
+        capture: true,
+        content: body,
+      },
     ],
-    lists: [{ id: LIST_ID, x: 0, y: 48, w: 576, h: 184, capture: true, items }],
+    chrome: { hint },
   });
 }
 

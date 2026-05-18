@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    VOX mascot — smiling fox in Even Realities monoline style.
+    Single-color, geometric, no fills (face contour + minimal interior marks).
+    Designed at 1024x1024 so it scales clean to portal + app icon sizes.
+  -->
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <g fill="none" stroke="#000000" stroke-width="48"
+     stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- Outer face: two ear triangles + jaw chevron, one continuous path -->
+    <path d="
+      M 256 296
+      L 184 152
+      L 360 264
+      L 664 264
+      L 840 152
+      L 768 296
+      L 752 600
+      L 512 856
+      L 272 600
+      Z" />
+
+    <!-- Inner ear hint (left) -->
+    <path d="M 248 200 L 288 248" />
+    <!-- Inner ear hint (right) -->
+    <path d="M 776 200 L 736 248" />
+
+    <!-- Smiling eyes — two upward arcs -->
+    <path d="M 360 472 Q 408 528 456 472" stroke-width="40"/>
+    <path d="M 568 472 Q 616 528 664 472" stroke-width="40"/>
+
+    <!-- Cheek dots -->
+    <circle cx="312" cy="608" r="20" fill="#000000" stroke="none"/>
+    <circle cx="712" cy="608" r="20" fill="#000000" stroke="none"/>
+
+    <!-- Snout: small triangle from nose to mouth -->
+    <path d="M 492 592 L 532 592 L 512 632 Z" fill="#000000" />
+
+    <!-- Smile -->
+    <path d="M 432 712 Q 512 768 592 712" stroke-width="40"/>
+  </g>
+</svg>

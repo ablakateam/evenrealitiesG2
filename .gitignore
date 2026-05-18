@@ -51,3 +51,8 @@ server/dump.rdb
 # Backups
 *.bak
 *~
+
+# Local scratch / screenshots with PII (per-machine, never commit)
+STORE_LISTING.md
+even hub screens/
+qpp screens/
