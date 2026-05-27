@@ -72,9 +72,9 @@ const META_Y = TITLE_Y + TITLE_H + 2; // 68
 const META_H = 26;
 
 const READY_BODY_Y = META_Y + META_H + 6;   // 100
-const READY_BODY_H = 46;                    // 100..146 — single line, breathes room for list
-const READY_LIST_Y = READY_BODY_Y + READY_BODY_H + 4; // 150
-const READY_LIST_H = 106;                   // 150..256 — ~4 items visible at once
+const READY_BODY_H = 60;                    // 100..160 — 2 wrapped lines, fits long emails
+const READY_LIST_Y = READY_BODY_Y + READY_BODY_H + 4; // 164
+const READY_LIST_H = 92;                    // 164..256 — ~3 items visible, still scrollable
 
 // Picker collapses body to an invisible 4px spacer so the list dominates.
 // Same container IDs as ready mode preserves the shape rule (L:38).
@@ -84,7 +84,7 @@ const PICKER_LIST_Y = PICKER_BODY_Y + PICKER_BODY_H + 2; // 102
 const PICKER_LIST_H = 154;                  // 102..256
 
 const BODY_WRAP = 36;
-const BODY_MAX_LINES = 1; // matches READY_BODY_H — single line preview, the list dominates
+const BODY_MAX_LINES = 2; // matches READY_BODY_H — anything longer truncates with "..."
 
 const TONE_ORDER: Tone[] = [
   'casual',
@@ -201,10 +201,11 @@ export const ConfirmPage: Page = {
         setTone(newTone);
         const fresh = getDraft();
         if (!fresh) return;
-        // Patch the parts that depend on tone — body + title — and re-render
-        // the list so the cursor marker moves to the new selection.
+        // Patch the parts that depend on tone — body + meta (which now
+        // carries the destination + tone) — then re-render so the cursor
+        // marker on the list moves to the new selection.
         await updateText(ctx.bridge, BODY_ID, wrapBody(getBodyText(fresh)));
-        await updateText(ctx.bridge, TITLE_ID, center(titleLine(fresh, true)));
+        await updateText(ctx.bridge, META_ID, center(destinationLine(fresh)));
         await render(ctx, fresh);
       }
     }
@@ -333,7 +334,9 @@ async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
 }
 
 function formatContactRow(c: PickerContact): string {
-  const hint = c.phone && c.email ? 'PH+EM' : c.phone ? 'PH' : c.email ? 'EM' : '--';
+  // Plain-English channel summary instead of cryptic PH/EM/PH+EM codes.
+  const hint =
+    c.phone && c.email ? 'both' : c.phone ? 'phone' : c.email ? 'email' : 'no address';
   const name = c.name.length > 22 ? c.name.slice(0, 21) + '~' : c.name;
   return `${name.padEnd(22)} ${hint}`;
 }
@@ -353,14 +356,16 @@ function titleLine(draft: ComposeDraft, ready: boolean): string {
 }
 
 function destinationLine(draft: ComposeDraft): string {
-  // Show the phone number or email actually being targeted. If both exist
-  // we show the active channel's value (other channel is accessible via
-  // the in-list "switch to X" toggle).
-  if (draft.channel === 'email' && draft.recipient.email) return draft.recipient.email;
-  if (draft.channel === 'sms' && draft.recipient.phone) return draft.recipient.phone;
-  if (draft.recipient.phone) return draft.recipient.phone;
-  if (draft.recipient.email) return draft.recipient.email;
-  return '(no address)';
+  // Show the actual destination address + the active tone, so the user
+  // can verify BOTH "where is this going" and "what voice am I using"
+  // without scrolling back to the tone list.
+  let address: string;
+  if (draft.channel === 'email' && draft.recipient.email) address = draft.recipient.email;
+  else if (draft.channel === 'sms' && draft.recipient.phone) address = draft.recipient.phone;
+  else if (draft.recipient.phone) address = draft.recipient.phone;
+  else if (draft.recipient.email) address = draft.recipient.email;
+  else address = '(no address)';
+  return `${address}  ·  ${capitalize(draft.tone)}`;
 }
 
 function metaLine(draft: ComposeDraft): string {

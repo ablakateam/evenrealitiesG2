@@ -122,11 +122,20 @@ export function setSubject(subject: string | null): void {
 
 /** Body text for the currently-selected tone (falls back to original / transcription). */
 export function getBodyText(d: ComposeDraft = current!): string {
-  const v = d.variants.find((x) => x.tone === d.tone && !x.error && x.text);
-  if (v) return v.text;
-  const orig = d.variants.find((x) => x.tone === 'original' && x.text);
+  // Pick the active variant when it has usable text. A variant counts as
+  // "empty" not just when the field is "" but also when it shrunk down to
+  // whitespace — some rewrites surprise us with a stray newline only.
+  const active = d.variants.find((x) => x.tone === d.tone);
+  if (active && !active.error && active.text.trim().length > 0) return active.text;
+
+  // Fall back to the original transcription variant, then the intent body,
+  // then the raw transcription. Never return an empty string — the body
+  // container would render as a blank box and look broken.
+  const orig = d.variants.find((x) => x.tone === 'original' && x.text.trim().length > 0);
   if (orig) return orig.text;
-  return d.baseIntent.body || d.transcription;
+  if (d.baseIntent.body.trim().length > 0) return d.baseIntent.body;
+  if (d.transcription.trim().length > 0) return d.transcription;
+  return '(no preview)';
 }
 
 /** Variant for the currently-selected tone, or undefined if not cached. */

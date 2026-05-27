@@ -1,18 +1,31 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage } from '../render.js';
+import { showPage, center } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 import { markVoiceCueSeen } from '../kvs.js';
 import { IdlePage } from './idle.js';
 
 /**
  * First-run voice cue card. Shown exactly once — on the first launch
  * after pairing — to teach the wearer the universal-voice pattern.
- * Tap or scroll dismisses; the seen flag persists across cold starts.
+ * Tap dismisses; the seen flag persists across cold starts.
+ *
+ * Uses the canonical chrome shape (text 2 title + text 3 capture body)
+ * so the next-page hop to Idle shares container IDs — no L:38 silent
+ * rebuild trap on first launch.
  */
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
+const TITLE_ID = 2;
+const BODY_ID = 3;
+
+const CUE_BODY = [
+  '   Hi. I help you message',
+  '   without taking out your phone.',
+  '',
+  '   Tap to speak. Try:',
+  '     "send dan running late"',
+  '     "tell mom call me back"',
+].join('\n');
 
 export const VoiceCuePage: Page = {
   id: 'voice-cue',
@@ -20,26 +33,30 @@ export const VoiceCuePage: Page = {
   async mount(ctx: PageContext): Promise<void> {
     await showPage(ctx.bridge, {
       texts: [
-        { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: 'first time?' },
-        { id: FOOTER_ID, x: 0, y: 236, w: 576, h: 48, capture: false, content: '[TAP] got it' },
-      ],
-      lists: [
         {
-          id: LIST_ID,
+          id: TITLE_ID,
           x: 0,
-          y: 48,
+          y: BODY_TOP,
           w: 576,
-          h: 184,
+          h: 32,
+          border: 0,
+          padding: 4,
+          capture: false,
+          content: center('first time?'),
+        },
+        {
+          id: BODY_ID,
+          x: 0,
+          y: BODY_TOP + 36,
+          w: 576,
+          h: BODY_BOTTOM - (BODY_TOP + 36),
+          border: 1,
+          padding: 8,
           capture: true,
-          items: [
-            'Pick "> Speak" to talk.',
-            'Try:',
-            '"send dan running late"',
-            '"open inbox"',
-            '"save 415-555-0142 mom"',
-          ],
+          content: CUE_BODY,
         },
       ],
+      chrome: { hint: 'tap to get started' },
     });
   },
 

@@ -54,6 +54,14 @@ export class AudioRecorder {
 
   /** Render the rolling amplitude as a block-char meter, right-aligned. */
   meter(): string {
+    // When no audio frames have arrived yet (sim with no mic, or the first
+    // 100ms on real hardware) show a flat baseline so the screen reads as
+    // "ready and listening" — the BLOCKS levels grow upward from this floor
+    // once audio arrives. The G2 font renders ASCII dashes reliably; the
+    // block-glyph baseline (▁) didn't on the sim build we tested.
+    if (this.levels.length === 0) {
+      return '-'.repeat(METER_SLOTS);
+    }
     const bars = this.levels.map((l) => BLOCKS[Math.max(0, Math.min(8, l))] ?? ' ').join('');
     return bars.padStart(METER_SLOTS, ' ');
   }
