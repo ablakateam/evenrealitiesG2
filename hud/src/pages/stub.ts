@@ -2,6 +2,7 @@ import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
 import { showPage, center } from '../render.js';
 import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
+import { IdlePage } from './idle.js';
 
 /**
  * Placeholder page factory — used by error/incomplete flows to surface an
@@ -49,7 +50,12 @@ export function makeStubPage(id: string, title: string, note: string): Page {
     },
     async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
       if (event.kind === 'tap' || event.kind === 'list-select') {
-        await ctx.router.back();
+        // Try the back stack first (stub was pushed from a flow page).
+        // If that's empty — which is the case when the stub was launched
+        // via router.go() after a send error — fall through to Idle so
+        // the wearer is never stranded on an error screen.
+        const popped = await ctx.router.back();
+        if (!popped) await ctx.router.go(IdlePage);
       }
     },
   };

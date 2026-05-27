@@ -92,10 +92,12 @@ function validate(draft: ComposeDraft): string | null {
   if (draft.channel === 'sms' && !draft.recipient.phone) {
     return "That contact has no phone — pick a different channel.";
   }
-  if (draft.channel === 'email') {
-    if (!draft.recipient.email) return "That contact has no email — pick a different channel.";
-    if (!draft.subject) return 'Pick a subject first.';
+  if (draft.channel === 'email' && !draft.recipient.email) {
+    return "That contact has no email — pick a different channel.";
   }
+  // Subject is NOT a hard requirement — postEmail auto-derives one from the
+  // body when the draft didn't pin a specific subject. Forcing a stub here
+  // would strand the wearer because there's no in-HUD subject editor.
   if (draft.channel === 'both' && (!draft.recipient.phone || !draft.recipient.email)) {
     return 'Both channels need a phone AND an email.';
   }
@@ -116,13 +118,28 @@ async function postSms(draft: ComposeDraft, body: string, clientUuid: string): P
 async function postEmail(draft: ComposeDraft, body: string, clientUuid: string): Promise<void> {
   const req: EmailRequest = {
     to: draft.recipient.email!,
-    subject: draft.subject ?? 'Message from VOX',
+    subject: draft.subject ?? deriveSubject(body),
     body,
     tone: draft.tone,
     client_uuid: clientUuid,
   };
   if (draft.recipient.id) req.contact_id = draft.recipient.id;
   await apiPost('/api/email', req);
+}
+
+/**
+ * Build a reasonable subject line from the message body. The wearer can't
+ * type on the HUD, so we derive a default rather than forcing a stub. We
+ * use the first sentence (or first ~50 chars) — short enough to read in a
+ * mail-app preview, long enough to be useful.
+ */
+function deriveSubject(body: string): string {
+  const trimmed = body.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return 'Message from VOX';
+  const sentenceEnd = trimmed.search(/[.!?]\s/);
+  if (sentenceEnd > 0 && sentenceEnd <= 60) return trimmed.slice(0, sentenceEnd);
+  if (trimmed.length <= 50) return trimmed;
+  return trimmed.slice(0, 49) + '…';
 }
 
 async function renderSending(ctx: PageContext, draft: ComposeDraft): Promise<void> {
