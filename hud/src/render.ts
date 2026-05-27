@@ -128,14 +128,50 @@ export interface PageSpec {
   chrome?: ChromeOpts;
 }
 
+/**
+ * Container IDs every chrome page must include, hidden when not in use.
+ *
+ * The SDK silently fails any rebuildPageContainer that re-introduces an ID
+ * dropped by a prior smaller rebuild (L:38). To dodge that quirk completely,
+ * every chrome page emits the SAME maximal shape — body text 2, 3, 4 + list
+ * 5 + chrome 90, 99 — and the renderer pads any container the page didn't
+ * declare with a 1×1 invisible placeholder. No drop, nothing to re-introduce.
+ */
+const CHROME_BODY_TEXT_IDS = [2, 3, 4] as const;
+const CHROME_BODY_LIST_IDS = [5] as const;
+
+function hiddenText(id: number): TextBox {
+  // Off-screen below the footer (288px-tall display, footer ends at 288).
+  // Width/height kept comfortably above 0 because some SDK paths compute
+  // `width - padding*2` for the inner layout box and barf on negatives.
+  return { id, x: 0, y: 290, w: 16, h: 16, border: 0, padding: 0, content: '', capture: false };
+}
+
+function hiddenList(id: number): ListBox {
+  return { id, x: 0, y: 290, w: 32, h: 16, border: 0, padding: 0, items: [' '], capture: false };
+}
+
 /** Render a page. Picks createStartUp vs rebuild automatically. */
 export async function showPage(bridge: EvenAppBridge, spec: PageSpec): Promise<boolean> {
-  const bodyTexts = spec.texts ?? [];
+  const bodyTexts = [...(spec.texts ?? [])];
+  const bodyLists = [...(spec.lists ?? [])];
+
+  if (spec.chrome) {
+    // Auto-pad to the maximal chrome shape so successive pages share the
+    // same container IDs and never trip the L:38 silent-rebuild bug.
+    for (const id of CHROME_BODY_TEXT_IDS) {
+      if (!bodyTexts.some((t) => t.id === id)) bodyTexts.push(hiddenText(id));
+    }
+    for (const id of CHROME_BODY_LIST_IDS) {
+      if (!bodyLists.some((l) => l.id === id)) bodyLists.push(hiddenList(id));
+    }
+  }
+
   const chromeTexts: TextBox[] = spec.chrome
     ? [chromeHeaderBox(), chromeFooterBox(spec.chrome.hint)]
     : [];
   const textObject = [...bodyTexts, ...chromeTexts].map(textProp);
-  const listObject = (spec.lists ?? []).map(listProp);
+  const listObject = bodyLists.map(listProp);
   const total = textObject.length + listObject.length;
 
   if (!firstPageShown) {

@@ -138,14 +138,16 @@ async function renderUnpaired(ctx: PageContext): Promise<void> {
 }
 
 function footerHint(): string {
-  // User explicitly wants the footer to be ONLY last-sent (method + who +
-  // when). Unread/inbox state lives elsewhere — Idle stays calm.
-  if (!lastSent) return '';
+  // Footer always tells the user that a double-tap exits — this is the
+  // ONE page where 2x means leave-the-app (Even Hub submission gate), so
+  // we surface it explicitly rather than letting the wearer guess. When
+  // there's a last-sent line it rides next to the exit hint.
+  const exit = '2x to exit';
+  if (!lastSent) return exit;
   const method = lastSent.channel === 'sms' ? 'SMS' : 'Email';
   const ago = formatAgo(lastSent.minutesAgo);
-  // "just now" reads as a complete phrase already; "12m" needs the "ago" suffix.
   const when = ago === 'just now' ? ago : `${ago} ago`;
-  return `${method} to ${lastSent.name} - ${when}`;
+  return `${method} to ${lastSent.name} - ${when}   ·   ${exit}`;
 }
 
 function formatAgo(minutes: number): string {

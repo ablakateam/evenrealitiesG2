@@ -1,6 +1,7 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage } from '../render.js';
+import { showPage, center } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 import { ComposePage } from './compose.js';
 import { IdlePage } from './idle.js';
 import type { ComposeDraft } from '../draft.js';
@@ -8,13 +9,22 @@ import type { ComposeDraft } from '../draft.js';
 /**
  * Sent confirmation — channel-aware copy + glyph. Tap to start another
  * compose; auto-returns to Idle after AUTO_RETURN_MS so the wearer is
- * never stranded on the success screen. Double-tap exits the app.
+ * never stranded on the success screen.
+ *
+ * Container shape MATCHES the chrome flow (text 2, 3 + chrome 90, 99) —
+ * see the note in send.ts. The previous shape ({1, 2, 3}, no chrome)
+ * crashed the app on the double-tap-back-to-Idle hop because Idle had
+ * to re-introduce the chrome IDs we'd just dropped (L:38 SDK quirk).
  */
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
-const AUTO_RETURN_MS = 4000;
+const TITLE_ID = 2;
+const BODY_ID = 3;
+// The auto-return used to be 4s, which raced badly with the user's manual
+// double-tap-to-home — by the time they double-tapped, they were already
+// on Idle, and double-tap on Idle exits the app (Even Hub submission gate).
+// Keep the Sent screen up long enough that the user is always in control:
+// they tap for another compose, double-tap to head back to Idle themselves.
+const AUTO_RETURN_MS = 30000;
 
 export function makeSentPage(draft: ComposeDraft): Page {
   const channel = draft.channel;
@@ -43,28 +53,30 @@ export function makeSentPage(draft: ComposeDraft): Page {
 
       await showPage(ctx.bridge, {
         texts: [
-          { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: glyph },
           {
-            id: FOOTER_ID,
+            id: TITLE_ID,
             x: 0,
-            y: 236,
+            y: BODY_TOP,
             w: 576,
             h: 48,
+            border: 0,
+            padding: 4,
             capture: false,
-            content: '[TAP] new  [X2] home  (back in 4s)',
+            content: center(glyph),
           },
-        ],
-        lists: [
           {
-            id: LIST_ID,
+            id: BODY_ID,
             x: 0,
-            y: 48,
+            y: BODY_TOP + 56,
             w: 576,
-            h: 184,
+            h: BODY_BOTTOM - (BODY_TOP + 56),
+            border: 1,
+            padding: 8,
             capture: true,
-            items: [clip(headline, 28), '', pill],
+            content: center(`\n${clip(headline, 36)}\n\n${pill}`),
           },
         ],
+        chrome: { hint: 'tap for another  ·  2x to head home' },
       });
     },
 

@@ -72,9 +72,9 @@ const META_Y = TITLE_Y + TITLE_H + 2; // 68
 const META_H = 26;
 
 const READY_BODY_Y = META_Y + META_H + 6;   // 100
-const READY_BODY_H = 62;                    // 100..162 — fits 2 wrapped lines + breathing room
-const READY_LIST_Y = READY_BODY_Y + READY_BODY_H + 4; // 166
-const READY_LIST_H = 90;                    // 166..256 — ~3 items visible
+const READY_BODY_H = 46;                    // 100..146 — single line, breathes room for list
+const READY_LIST_Y = READY_BODY_Y + READY_BODY_H + 4; // 150
+const READY_LIST_H = 106;                   // 150..256 — ~4 items visible at once
 
 // Picker collapses body to an invisible 4px spacer so the list dominates.
 // Same container IDs as ready mode preserves the shape rule (L:38).
@@ -83,8 +83,8 @@ const PICKER_BODY_H = 4;                    // 96..100 (effectively invisible)
 const PICKER_LIST_Y = PICKER_BODY_Y + PICKER_BODY_H + 2; // 102
 const PICKER_LIST_H = 154;                  // 102..256
 
-const BODY_WRAP = 32;
-const BODY_MAX_LINES = 2; // matches READY_BODY_H — anything longer truncates with "..."
+const BODY_WRAP = 36;
+const BODY_MAX_LINES = 1; // matches READY_BODY_H — single line preview, the list dominates
 
 const TONE_ORDER: Tone[] = [
   'casual',
@@ -309,7 +309,7 @@ async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
     // verify where the message is actually going before hitting SEND.
     meta = center(destinationLine(draft));
     body = wrapBody(getBodyText(draft));
-    hint = `tap SEND  ·  ↓ ${listTones.length} tones  ·  2x cancel`;
+    hint = `tap SEND  ·  scroll for ${listTones.length} tones  ·  2x cancel`;
   } else {
     listTones = [];
     items = [PICK_LABEL, CANCEL_LABEL];

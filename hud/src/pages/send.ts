@@ -1,5 +1,6 @@
 import type { PageContext } from '../router.js';
-import { showPage } from '../render.js';
+import { showPage, center } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 import { apiPost, HudApiError } from '../api.js';
 import { getDraft, getBodyText, clearDraft, type ComposeDraft } from '../draft.js';
 import { makeSentPage } from './sent.js';
@@ -12,11 +13,15 @@ import { makeStubPage } from './stub.js';
  * to /api/sms or /api/email (or both if channel = "both"). On success
  * navigates to the sent confirmation page and clears the draft. On
  * failure renders an empathetic error stub.
+ *
+ * Container shape MATCHES the chrome flow (text 2, 3 + chrome 90, 99) so
+ * the rebuild never drops + re-introduces the chrome IDs across the
+ * Confirm → Send → Sent → Idle hop (the L:38 SDK quirk used to crash the
+ * app on the double-tap back home).
  */
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
+const TITLE_ID = 2;
+const BODY_ID = 3;
 
 interface SmsRequest {
   to: string;
@@ -122,30 +127,33 @@ async function postEmail(draft: ComposeDraft, body: string, clientUuid: string):
 
 async function renderSending(ctx: PageContext, draft: ComposeDraft): Promise<void> {
   const target = draft.channel === 'email' ? draft.recipient.email : draft.recipient.phone;
+  const name = clip(draft.recipient.name ?? '', 24);
   await showPage(ctx.bridge, {
     texts: [
-      { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: 'Sending...' },
       {
-        id: FOOTER_ID,
+        id: TITLE_ID,
         x: 0,
-        y: 236,
+        y: BODY_TOP,
         w: 576,
         h: 48,
+        border: 0,
+        padding: 4,
         capture: false,
-        content: clip(target ?? '', 56),
+        content: center('sending...'),
       },
-    ],
-    lists: [
       {
-        id: LIST_ID,
+        id: BODY_ID,
         x: 0,
-        y: 48,
+        y: BODY_TOP + 56,
         w: 576,
-        h: 184,
+        h: BODY_BOTTOM - (BODY_TOP + 56),
+        border: 1,
+        padding: 8,
         capture: true,
-        items: [`Off to ${clip(draft.recipient.name ?? '', 20)}`, '', 'one moment...'],
+        content: center(`\nOff to ${name}\n${clip(target ?? '', 36)}`),
       },
     ],
+    chrome: { hint: 'one moment...' },
   });
 }
 
