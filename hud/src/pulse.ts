@@ -2,40 +2,45 @@ import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { updateText } from './render.js';
 
 /**
- * A calm breathing pulse — the animated centerpiece on Idle.
+ * Bold breathing pulse — the animated centerpiece on Idle.
  *
- * We swap a single text container's content between five frames at ~600ms
- * each, so one full cycle is ~3 s. Pure ASCII so it renders identically on
- * the simulator and on real G2 hardware (the G2 font's support for
- * Unicode bullet glyphs is uncertain — see L:38 in LESSONSLEARNED).
+ * Solid filled diamond that swells and contracts in a 6-frame loop
+ * (3 growing, 3 shrinking) so the wearer sees "VOX is ready, listening"
+ * at a glance. 5 lines tall, ~21 chars at peak — fills the upper third
+ * of the screen with real visual weight. Uses ASCII '*' (printable on
+ * every G2 font build we've seen) rather than unicode blocks which
+ * occasionally fail to render in the simulator font.
  *
- * Designed to feel like a slow breath, not a heartbeat — VOX should read
- * calm and patient on the wrist, not anxious. The animation never moves
- * laterally (no jitter to draw the eye), only widens and contracts.
- *
- * Future work: replace with an ImageContainerProperty-backed bitmap when
- * we design a real mascot. The animator's lifecycle (`start` / `stop`) is
- * stable so the swap will be one-file.
+ * The trick to a flicker-free breath is keeping every frame the same
+ * number of lines: each frame is 5 lines tall, padded with spaces, so
+ * `textContainerUpgrade` swaps content in place without re-flowing the
+ * container.
  */
 
-const FRAME_MS = 600;
-
-// Each frame is centered within a ~56-char-wide container (measured on
-// sim — G2 font renders at ~9.7px/char, so 576px container with padding
-// holds ~56 chars). Computed once at module load so we don't pay an
-// arithmetic cost per swap.
+const FRAME_MS = 500;
 const CHAR_WIDTH = 100;
-function centerOne(s: string): string {
+
+function centerLine(s: string): string {
   const pad = Math.max(0, Math.floor((CHAR_WIDTH - s.length) / 2));
   return ' '.repeat(pad) + s;
 }
 
+/** Build one 5-line frame with a diamond of the given peak width. */
+function diamondFrame(peak: number): string {
+  // peak must be odd so the diamond is symmetric (1, 3, 5, 7, 9, 11, ...).
+  // 5-line shape: widths peak-4, peak-2, peak, peak-2, peak-4 (floor at 1).
+  const rows: number[] = [peak - 4, peak - 2, peak, peak - 2, peak - 4];
+  const lines = rows.map((w) => centerLine('*'.repeat(Math.max(1, w))));
+  return lines.join('\n');
+}
+
 const FRAMES: string[] = [
-  '\n\n' + centerOne('.'),
-  '\n\n' + centerOne('( )'),
-  '\n\n' + centerOne('(   )'),
-  '\n\n' + centerOne('( )'),
-  '\n\n' + centerOne('.'),
+  diamondFrame(5),  // small  — widths 1, 3, 5, 3, 1
+  diamondFrame(7),  // medium — widths 3, 5, 7, 5, 3
+  diamondFrame(9),  // large  — widths 5, 7, 9, 7, 5
+  diamondFrame(11), // peak   — widths 7, 9, 11, 9, 7
+  diamondFrame(9),  // shrink back
+  diamondFrame(7),
 ];
 
 export class Pulse {

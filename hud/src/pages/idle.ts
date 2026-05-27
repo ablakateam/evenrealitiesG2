@@ -89,6 +89,9 @@ export const IdlePage: Page = {
 };
 
 async function renderIdle(ctx: PageContext): Promise<void> {
+  // Pulse container is taller now (160px) to fit the 5-line breathing
+  // diamond. Tap-to-speak surface gets the remaining ~50px below — enough
+  // for the centered "tap to speak" line.
   await showPage(ctx.bridge, {
     texts: [
       {
@@ -96,7 +99,7 @@ async function renderIdle(ctx: PageContext): Promise<void> {
         x: 0,
         y: BODY_TOP,
         w: 576,
-        h: 96,
+        h: 160,
         border: 0,
         padding: 4,
         capture: false,
@@ -105,13 +108,13 @@ async function renderIdle(ctx: PageContext): Promise<void> {
       {
         id: TAP_ID,
         x: 0,
-        y: BODY_TOP + 104,
+        y: BODY_TOP + 164,
         w: 576,
-        h: BODY_BOTTOM - (BODY_TOP + 104),
+        h: BODY_BOTTOM - (BODY_TOP + 164),
         border: 0,
-        padding: 8,
+        padding: 6,
         capture: true,
-        content: center('\ntap to speak\n'),
+        content: center('tap to speak'),
       },
     ],
     chrome: { hint: footerHint() },
