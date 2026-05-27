@@ -2,7 +2,14 @@ import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
 import { showPage, updateText, center } from '../render.js';
 import { BODY_TOP } from '../chrome.js';
-import { getDraft, getBodyText, setTone, setRecipient, type ComposeDraft } from '../draft.js';
+import {
+  getDraft,
+  getBodyText,
+  setTone,
+  setChannel,
+  setRecipient,
+  type ComposeDraft,
+} from '../draft.js';
 import type { Tone } from '../api.js';
 import { apiGet, HudApiError } from '../api.js';
 import { sendDraft } from './send.js';
@@ -90,6 +97,8 @@ const TONE_ORDER: Tone[] = [
 ];
 
 const SEND_LABEL = '── SEND ──';
+const SWITCH_TO_EMAIL_LABEL = 'switch to Email';
+const SWITCH_TO_SMS_LABEL = 'switch to SMS';
 const PICK_LABEL = 'pick recipient';
 const CANCEL_LABEL = 'cancel';
 const PICKING_CANCEL_LABEL = '── cancel ──';
@@ -165,29 +174,47 @@ export const ConfirmPage: Page = {
       return;
     }
 
-    // mode === 'ready': items are [SEND_LABEL, ...listTones]. SEND is now
-    // at index 0 — first thing the cursor lands on — so the user never has
-    // to scroll past the tone list to reach it.
+    // mode === 'ready': items are [SEND, (switch-channel?), ...listTones].
+    // SEND is always index 0; the channel toggle is index 1 when present
+    // (recipient has both phone+email AND not locked); tones start at the
+    // remaining offset.
     if (event.index === 0) {
       await sendDraft(ctx);
       return;
     }
-    const toneIndex = event.index - 1;
+
+    const toggleVisible = canToggleChannel(draft);
+    if (toggleVisible && event.index === 1) {
+      // Flip channel in place — title + meta both change.
+      const next = draft.channel === 'sms' ? 'email' : 'sms';
+      setChannel(next);
+      const fresh = getDraft();
+      if (!fresh) return;
+      await render(ctx, fresh);
+      return;
+    }
+
+    const toneIndex = event.index - (toggleVisible ? 2 : 1);
     if (toneIndex >= 0 && toneIndex < listTones.length) {
       const newTone = listTones[toneIndex]!;
       if (newTone !== draft.tone) {
         setTone(newTone);
         const fresh = getDraft();
         if (!fresh) return;
-        // Patch the parts that depend on tone — body + meta — and re-render
+        // Patch the parts that depend on tone — body + title — and re-render
         // the list so the cursor marker moves to the new selection.
         await updateText(ctx.bridge, BODY_ID, wrapBody(getBodyText(fresh)));
-        await updateText(ctx.bridge, META_ID, metaLine(fresh));
+        await updateText(ctx.bridge, TITLE_ID, center(titleLine(fresh, true)));
         await render(ctx, fresh);
       }
     }
   },
 };
+
+function canToggleChannel(draft: ComposeDraft): boolean {
+  if (draft.locked.channel) return false;
+  return Boolean(draft.recipient.phone && draft.recipient.email);
+}
 
 async function enterPickingRecipient(ctx: PageContext, draft: ComposeDraft): Promise<void> {
   // Render an interim "loading contacts" state so the user sees feedback
@@ -268,14 +295,21 @@ async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
     listTones = availableTones(draft);
     // SEND at the TOP so it's the first thing under the cursor — earlier
     // we buried it at the bottom of 7 tones and the user couldn't reach
-    // it without ~5 scrolls.
-    items = [SEND_LABEL].concat(
+    // it without ~5 scrolls. Channel-toggle row sits between SEND and tones
+    // when the recipient has both phone + email (otherwise omitted).
+    const head: string[] = [SEND_LABEL];
+    if (canToggleChannel(draft)) {
+      head.push(draft.channel === 'sms' ? SWITCH_TO_EMAIL_LABEL : SWITCH_TO_SMS_LABEL);
+    }
+    items = head.concat(
       listTones.map((t) => (t === draft.tone ? `> ${capitalize(t)}` : `  ${capitalize(t)}`)),
     );
     title = center(titleLine(draft, true));
-    meta = center(metaLine(draft));
+    // Meta line carries the destination address so the user can visually
+    // verify where the message is actually going before hitting SEND.
+    meta = center(destinationLine(draft));
     body = wrapBody(getBodyText(draft));
-    hint = 'tap SEND or pick a tone   ·   2x to cancel';
+    hint = `tap SEND  ·  ↓ ${listTones.length} tones  ·  2x cancel`;
   } else {
     listTones = [];
     items = [PICK_LABEL, CANCEL_LABEL];
@@ -306,12 +340,31 @@ function formatContactRow(c: PickerContact): string {
 
 function titleLine(draft: ComposeDraft, ready: boolean): string {
   if (!ready) return 'pick a recipient';
-  if (draft.replyContext) return `reply to ${draft.replyContext.from_name}`;
-  if (draft.recipient.name) return `send to ${draft.recipient.name}`;
-  return 'send';
+  // Title is one ~36-char line so we keep it compact: "<who>  ·  <channel>".
+  // Tone shows in the list with `>` marker so doesn't need to ride here too.
+  const who = draft.replyContext
+    ? truncate(`reply to ${draft.replyContext.from_name}`, 22)
+    : draft.recipient.name
+      ? truncate(draft.recipient.name, 22)
+      : 'send';
+  const channel =
+    draft.channel === 'sms' ? 'SMS' : draft.channel === 'email' ? 'Email' : 'SMS+Email';
+  return `${who}  ·  ${channel}`;
+}
+
+function destinationLine(draft: ComposeDraft): string {
+  // Show the phone number or email actually being targeted. If both exist
+  // we show the active channel's value (other channel is accessible via
+  // the in-list "switch to X" toggle).
+  if (draft.channel === 'email' && draft.recipient.email) return draft.recipient.email;
+  if (draft.channel === 'sms' && draft.recipient.phone) return draft.recipient.phone;
+  if (draft.recipient.phone) return draft.recipient.phone;
+  if (draft.recipient.email) return draft.recipient.email;
+  return '(no address)';
 }
 
 function metaLine(draft: ComposeDraft): string {
+  // Kept for needs-recipient / picker placeholder paths (no destination yet).
   const channel =
     draft.channel === 'sms' ? 'SMS' : draft.channel === 'email' ? 'Email' : 'SMS+Email';
   const tone = capitalize(draft.tone);

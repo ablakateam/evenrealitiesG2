@@ -1,4 +1,5 @@
 import { initBridge, normalizeEvent } from './bridge.js';
+import { LAUNCH_SOURCE_APP_MENU, type LaunchSource } from '@evenrealities/even_hub_sdk';
 import { Router } from './router.js';
 import { IdlePage } from './pages/idle.js';
 import { VoiceCuePage } from './pages/voice-cue.js';
@@ -11,11 +12,15 @@ import {
 import { hudApi } from './api.js';
 import { renderCompanion } from './companion/index.js';
 
-// If the Even Hub bridge isn't available within this many ms we assume we're
-// running in the phone WebView (no glasses connected) and switch to the
-// companion UI instead of the HUD. Glasses bridge typically resolves in
-// <500ms; 2500ms is generous for slow connections.
-const BRIDGE_TIMEOUT_MS = 2500;
+// The Even Hub bridge is ALWAYS injected on both the phone WebView and the
+// glasses HUD WebView, so a "bridge present" check can't distinguish them.
+// The SDK pushes `evenAppLaunchSource` once after the page loads — 'appMenu'
+// when the user opened VOX from the phone Even Hub app, 'glassesMenu' when
+// they opened it from the glasses launcher. We subscribe immediately after
+// the bridge resolves so we don't miss the one-shot push, with a fallback
+// timeout in case the host never sends it (treat unknown as glasses since
+// the HUD is the primary surface).
+const LAUNCH_SOURCE_TIMEOUT_MS = 1500;
 
 async function sendTelemetry(payload: { message: string; stack: string | null; page: string | null }): Promise<void> {
   try {
@@ -40,19 +45,40 @@ async function sendTelemetry(payload: { message: string; stack: string | null; p
  *   4. mount the Idle page
  */
 async function main(): Promise<void> {
-  // Race the glasses bridge against a short timeout. If the bridge throws,
-  // rejects, or just doesn't show up in time we're in the phone WebView —
-  // render the companion and stop. The catch on initBridge is essential —
-  // a throw in browser context (no host SDK injected) would otherwise
-  // bubble to main()'s rejection handler and skip the companion entirely.
-  const bridge = await Promise.race([
-    initBridge().catch((err) => {
-      console.warn('[vox-hub] bridge unavailable — phone-companion mode:', err);
-      return null;
-    }),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), BRIDGE_TIMEOUT_MS)),
-  ]);
-  if (!bridge) {
+  // 1. Wait for the bridge — it's injected on phone and glasses alike.
+  //    If we're in a regular browser (no host SDK at all) initBridge throws;
+  //    fall through to companion in that case too.
+  let bridge;
+  try {
+    bridge = await initBridge();
+  } catch (err) {
+    console.warn('[vox-hub] no bridge — rendering companion:', err);
+    const root = document.getElementById('app');
+    if (root) renderCompanion(root);
+    return;
+  }
+
+  // 2. Subscribe to launch-source IMMEDIATELY (one-shot push, fires once
+  //    after page load — miss it and we never see it). Wait up to 1.5s for
+  //    the signal; if it never arrives, assume glasses (HUD is primary).
+  const launchSource = await new Promise<LaunchSource | null>((resolve) => {
+    let resolved = false;
+    const unsub = bridge.onLaunchSource((source) => {
+      if (resolved) return;
+      resolved = true;
+      unsub();
+      resolve(source);
+    });
+    setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      unsub();
+      resolve(null);
+    }, LAUNCH_SOURCE_TIMEOUT_MS);
+  });
+
+  if (launchSource === LAUNCH_SOURCE_APP_MENU) {
+    // Phone Even Hub app launched us — render the companion UI.
     const root = document.getElementById('app');
     if (root) renderCompanion(root);
     return;
