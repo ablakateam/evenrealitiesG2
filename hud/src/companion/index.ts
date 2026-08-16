@@ -93,7 +93,23 @@ export function renderCompanion(root: HTMLElement): void {
     text: server.replace(/^https?:\/\//, '') }));
   wrap.appendChild(footer);
 
+  // Initial hydrate + keep it fresh. The user reported that sends made
+  // during a phone-app session never appeared in the activity feed — the
+  // companion was drawing a snapshot from mount time and never refreshing.
+  // Now we poll every 15 s while the tab is visible, and force-refresh
+  // whenever the tab becomes visible again (returning from another app).
   void hydrate(server, secret);
+  let pollTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
+    if (document.visibilityState === 'visible') void hydrate(server, secret);
+  }, 15000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void hydrate(server, secret);
+  });
+  // Best-effort cleanup if the page ever unmounts (WebView reload).
+  window.addEventListener('beforeunload', () => {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+  });
 }
 
 async function hydrate(server: string, secret: string): Promise<void> {
@@ -106,10 +122,15 @@ async function hydrate(server: string, secret: string): Promise<void> {
   let history: HistoryItem[] = [];
   let lastSent: HistoryItem | null = null;
 
+  // cache: 'no-store' + a cache-buster query param — the phone WebView's
+  // HTTP cache was returning 304 Not Modified even after we sent new
+  // messages, so the poll ran but rendered stale data. Force network.
+  const bust = Date.now();
+  const fetchOpts: RequestInit = { headers: auth, cache: 'no-store' };
   try {
     const [s, h] = await Promise.all([
-      fetch(`${server}/api/idle-suggestions`, { headers: auth }).then((r) => r.json()),
-      fetch(`${server}/api/history?limit=10`, { headers: auth }).then((r) => r.json()),
+      fetch(`${server}/api/idle-suggestions?_=${bust}`, fetchOpts).then((r) => r.json()),
+      fetch(`${server}/api/history?limit=10&_=${bust}`, fetchOpts).then((r) => r.json()),
     ]);
     status = s.status;
     history = h.items ?? [];

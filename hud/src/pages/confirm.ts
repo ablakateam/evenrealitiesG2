@@ -1,6 +1,6 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage, updateText, center } from '../render.js';
+import { showPage, center } from '../render.js';
 import { BODY_TOP } from '../chrome.js';
 import {
   getDraft,
@@ -51,40 +51,49 @@ const META_ID = 3;
 const BODY_ID = 4;
 const LIST_ID = 5;
 
-// Layout: two per-mode geometries that share the same container IDs so
-// the rebuild-shape rule (L:38) holds across mode flips. Each text
-// container needs ~26px to hold a line without vertical clipping.
+// Layout: three per-mode geometries share the same container IDs so the
+// rebuild-shape rule (L:38) holds across mode flips. All fit inside the
+// body area BODY_TOP=40 .. BODY_BOTTOM=256 (216px total).
 //
-//   ready / needs-recipient — body bordered, ~3-line preview, list ~4 visible:
-//     y 40–66    title
-//     y 68–94    meta
-//     y 100–156  body (border 1, 3 lines)
-//     y 160–256  list (~4 items visible scrollable)
+// Text containers need ≥26px vertical to hold a rendered line without
+// clipping (tested on sim). List items rendered by the SDK take ~32px
+// each including selection border + padding, so 4 items ≈ 128px.
 //
-//   picking-recipient — body collapsed to a one-line helper, list dominates:
-//     y 40–66    title
-//     y 68–94    meta
-//     y 96–116   body (no border, single helper line)
-//     y 118–256  list (~5 items visible scrollable)
-const TITLE_Y = BODY_TOP;             // 40
+//   ready / needs-recipient — main action list is tiny (3 items: SEND,
+//   switch-channel, tone-picker-entry), so we can afford a bigger body:
+//     y 40– 66   title  (26px)
+//     y 68– 94   meta   (26px — full height so descenders don't clip)
+//     y 96–176   body   (80px, 3 wrapped lines, no border — reads as
+//                        content, not a container)
+//     y 178–256  list   (78px, holds 3 short items: SEND / switch / tone)
+//
+//   picking-tone — same as picking-recipient (body collapses, list wins):
+//     (identical container geometry, only list contents change)
+//
+//   picking-recipient — body collapses to 4px spacer so list dominates:
+//     y 40– 66   title
+//     y 68– 94   meta
+//     y 96–100   body   (4px spacer, invisible)
+//     y 102–256  list   (154px, ~5 contacts visible)
+const TITLE_Y = BODY_TOP;                   // 40
 const TITLE_H = 26;
-const META_Y = TITLE_Y + TITLE_H + 2; // 68
-const META_H = 26;
+const META_Y = TITLE_Y + TITLE_H + 2;       // 68
+const META_H = 26;                          // full 26px so descenders don't clip
 
-const READY_BODY_Y = META_Y + META_H + 6;   // 100
-const READY_BODY_H = 60;                    // 100..160 — 2 wrapped lines, fits long emails
-const READY_LIST_Y = READY_BODY_Y + READY_BODY_H + 4; // 164
-const READY_LIST_H = 92;                    // 164..256 — ~3 items visible, still scrollable
+const READY_BODY_Y = META_Y + META_H + 2;   // 96
+const READY_BODY_H = 80;                    // 96..176 — 3 wrapped lines
+const READY_LIST_Y = READY_BODY_Y + READY_BODY_H + 2; // 178
+const READY_LIST_H = 78;                    // 178..256 — holds 3 tiny items
 
 // Picker collapses body to an invisible 4px spacer so the list dominates.
 // Same container IDs as ready mode preserves the shape rule (L:38).
 const PICKER_BODY_Y = META_Y + META_H + 2;  // 96
 const PICKER_BODY_H = 4;                    // 96..100 (effectively invisible)
 const PICKER_LIST_Y = PICKER_BODY_Y + PICKER_BODY_H + 2; // 102
-const PICKER_LIST_H = 154;                  // 102..256
+const PICKER_LIST_H = 154;                  // 102..256 — 5+ contacts visible
 
 const BODY_WRAP = 36;
-const BODY_MAX_LINES = 2; // matches READY_BODY_H — anything longer truncates with "..."
+const BODY_MAX_LINES = 3; // matches READY_BODY_H — 3 lines fits real messages
 
 const TONE_ORDER: Tone[] = [
   'casual',
@@ -99,13 +108,15 @@ const TONE_ORDER: Tone[] = [
 const SEND_LABEL = '── SEND ──';
 const SWITCH_TO_EMAIL_LABEL = 'switch to Email';
 const SWITCH_TO_SMS_LABEL = 'switch to SMS';
+const TONE_MENU_ENTRY = 'tone: ';         // suffix filled with current tone name
 const PICK_LABEL = 'pick recipient';
 const CANCEL_LABEL = 'cancel';
 const PICKING_CANCEL_LABEL = '── cancel ──';
+const TONE_BACK_LABEL = '── back ──';
 
 const MAX_CONTACTS_VISIBLE = 19; // 20-item list cap, save one for cancel
 
-type Mode = 'ready' | 'needs-recipient' | 'picking-recipient';
+type Mode = 'ready' | 'needs-recipient' | 'picking-recipient' | 'picking-tone';
 
 interface PickerContact {
   id: number;
@@ -174,10 +185,32 @@ export const ConfirmPage: Page = {
       return;
     }
 
-    // mode === 'ready': items are [SEND, (switch-channel?), ...listTones].
-    // SEND is always index 0; the channel toggle is index 1 when present
-    // (recipient has both phone+email AND not locked); tones start at the
-    // remaining offset.
+    if (mode === 'picking-tone') {
+      // Items are [TONE_BACK_LABEL, ...listTones]. Back at index 0 returns
+      // to ready; any other index is a tone selection.
+      if (event.index === 0) {
+        mode = 'ready';
+        await render(ctx, draft);
+        return;
+      }
+      const toneIndex = event.index - 1;
+      if (toneIndex >= 0 && toneIndex < listTones.length) {
+        const newTone = listTones[toneIndex]!;
+        if (newTone !== draft.tone) {
+          setTone(newTone);
+        }
+        // Return to ready regardless — user has made their pick.
+        mode = 'ready';
+        const fresh = getDraft();
+        if (!fresh) return;
+        await render(ctx, fresh);
+      }
+      return;
+    }
+
+    // mode === 'ready': items are [SEND, (switch-channel?), tone-entry].
+    // SEND is always index 0; channel toggle is index 1 when present
+    // (recipient has both phone+email AND not locked); tone-entry follows.
     if (event.index === 0) {
       await sendDraft(ctx);
       return;
@@ -194,20 +227,12 @@ export const ConfirmPage: Page = {
       return;
     }
 
-    const toneIndex = event.index - (toggleVisible ? 2 : 1);
-    if (toneIndex >= 0 && toneIndex < listTones.length) {
-      const newTone = listTones[toneIndex]!;
-      if (newTone !== draft.tone) {
-        setTone(newTone);
-        const fresh = getDraft();
-        if (!fresh) return;
-        // Patch the parts that depend on tone — body + meta (which now
-        // carries the destination + tone) — then re-render so the cursor
-        // marker on the list moves to the new selection.
-        await updateText(ctx.bridge, BODY_ID, wrapBody(getBodyText(fresh)));
-        await updateText(ctx.bridge, META_ID, center(destinationLine(fresh)));
-        await render(ctx, fresh);
-      }
+    // Any remaining index in ready mode is the tone-picker entry.
+    const toneEntryIndex = toggleVisible ? 2 : 1;
+    if (event.index === toneEntryIndex) {
+      mode = 'picking-tone';
+      await render(ctx, draft);
+      return;
     }
   },
 };
@@ -258,10 +283,10 @@ async function renderPickingPlaceholder(ctx: PageContext): Promise<void> {
 /* --- render ----------------------------------------------------------- */
 
 async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
-  // Picker mode keeps its own state until the user picks or cancels —
-  // don't auto-flip back to ready/needs based on draft readiness while
-  // the user is still inside the picker.
-  if (mode !== 'picking-recipient') {
+  // Picker/tone-picker modes keep their own state until the user picks or
+  // cancels — don't auto-flip back to ready/needs based on draft readiness
+  // while the user is still inside one of the sub-menus.
+  if (mode !== 'picking-recipient' && mode !== 'picking-tone') {
     mode = isReady(draft) ? 'ready' : 'needs-recipient';
   }
 
@@ -270,7 +295,10 @@ async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
   let meta: string;
   let body: string;
   let hint: string;
-  let bodyBorder = 1;
+  // Body has no border by default — the transcribed message reads as
+  // content, not "a container." The list keeps its border because it's
+  // an interactive surface the user needs to see the bounds of.
+  let bodyBorder = 0;
   let bodyY = READY_BODY_Y;
   let bodyH = READY_BODY_H;
   let listY = READY_LIST_Y;
@@ -286,7 +314,6 @@ async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
     title = center('pick recipient');
     meta = center(`${pickerRows.length} contacts${pickerError ? ' (error)' : ''}`);
     body = ''; // body is collapsed to a 4px spacer in picker mode
-    bodyBorder = 0;
     bodyY = PICKER_BODY_Y;
     bodyH = PICKER_BODY_H;
     listY = PICKER_LIST_Y;
@@ -294,23 +321,36 @@ async function render(ctx: PageContext, draft: ComposeDraft): Promise<void> {
     hint = 'tap to pick   ·   2x to cancel';
   } else if (mode === 'ready') {
     listTones = availableTones(draft);
-    // SEND at the TOP so it's the first thing under the cursor — earlier
-    // we buried it at the bottom of 7 tones and the user couldn't reach
-    // it without ~5 scrolls. Channel-toggle row sits between SEND and tones
-    // when the recipient has both phone + email (otherwise omitted).
+    // Ready-mode list is deliberately TINY: SEND + (maybe) switch-channel
+    // + tone submenu entry. Keeping the list at ~3 items means we can
+    // give the body 3 lines instead of 2, which is the difference between
+    // seeing a real message vs a truncated preview. Tapping the tone row
+    // swaps the list into 'picking-tone' mode (all 7 tones + back).
     const head: string[] = [SEND_LABEL];
     if (canToggleChannel(draft)) {
       head.push(draft.channel === 'sms' ? SWITCH_TO_EMAIL_LABEL : SWITCH_TO_SMS_LABEL);
     }
-    items = head.concat(
+    items = head.concat([`${TONE_MENU_ENTRY}${capitalize(draft.tone)}  >`]);
+    title = center(titleLine(draft, true));
+    meta = center(destinationLine(draft));
+    body = wrapBody(getBodyText(draft));
+    hint = 'tap SEND  ·  2x cancel';
+  } else if (mode === 'picking-tone') {
+    listTones = availableTones(draft);
+    items = [TONE_BACK_LABEL].concat(
       listTones.map((t) => (t === draft.tone ? `> ${capitalize(t)}` : `  ${capitalize(t)}`)),
     );
     title = center(titleLine(draft, true));
-    // Meta line carries the destination address so the user can visually
-    // verify where the message is actually going before hitting SEND.
-    meta = center(destinationLine(draft));
-    body = wrapBody(getBodyText(draft));
-    hint = `tap SEND  ·  scroll for ${listTones.length} tones  ·  2x cancel`;
+    meta = center('pick a tone');
+    // Collapse the body in tone-picker mode (mirrors recipient picker) so
+    // the list dominates and 5+ tones are visible without scroll. Same
+    // container IDs as ready mode preserves the L:38 shape rule.
+    body = '';
+    bodyY = PICKER_BODY_Y;
+    bodyH = PICKER_BODY_H;
+    listY = PICKER_LIST_Y;
+    listH = PICKER_LIST_H;
+    hint = `${listTones.length} tones  ·  tap to apply`;
   } else {
     listTones = [];
     items = [PICK_LABEL, CANCEL_LABEL];
