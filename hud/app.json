@@ -2,13 +2,24 @@
   "package_id": "com.ablaka.vox",
   "edition": "202601",
   "name": "VOX",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "min_app_version": "2.0.0",
   "min_sdk_version": "0.0.13",
   "entrypoint": "index.html",
   "permissions": [
-    { "name": "g2-microphone", "desc": "Capture audio from the glasses mic for voice-driven messaging." },
-    { "name": "network", "desc": "Reach the VOX server to send/receive messages and run voice transcription.", "whitelist": ["https://YOUR_DOMAIN"] }
+    {
+      "name": "g2-microphone",
+      "desc": "Capture audio from the glasses mic for voice-driven messaging."
+    },
+    {
+      "name": "network",
+      "desc": "Reach the VOX server to send/receive messages and run voice transcription.",
+      "whitelist": [
+        "https://YOUR_DOMAIN"
+      ]
+    }
   ],
-  "supported_languages": ["en"]
+  "supported_languages": [
+    "en"
+  ]
 }

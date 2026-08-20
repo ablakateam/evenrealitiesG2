@@ -1,3 +1,4 @@
+import { AudioInputSource } from '@evenrealities/even_hub_sdk';
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
 import { showPage, updateText } from '../render.js';
@@ -14,6 +15,7 @@ import {
   type VoiceAction,
 } from '../api.js';
 import { setDraftFromCompose } from '../draft.js';
+import { getPrefs } from '../prefs.js';
 import { ConfirmPage } from './confirm.js';
 import { ComposePage } from './compose.js';
 import { InboxPage } from './inbox.js';
@@ -41,8 +43,6 @@ import { makeStubPage } from './stub.js';
 const TITLE_ID = 2;
 const METER_ID = 3;
 
-const MAX_RECORDING_SECONDS = 30;
-const SILENCE_AUTOSTOP_SECONDS = 6;
 const TICK_MS = 250;
 const SIM_FALLBACK_UTTERANCE = 'open inbox';
 
@@ -73,11 +73,13 @@ export const VoicePage: Page = {
     await render(ctx);
 
     try {
-      await ctx.bridge.audioControl(true);
+      await ctx.bridge.audioControl(true, AudioInputSource.Glasses);
     } catch (err) {
       console.warn('[voice] audioControl(true) failed:', err);
     }
 
+    const maxSecs = Math.min(30, getPrefs().max_recording_seconds);
+    const silenceSecs = getPrefs().silence_autostop_seconds;
     tick = setInterval(() => {
       if (state !== 'recording') return;
       // Live-patch the meter container every tick — flicker-free since it's
@@ -87,9 +89,9 @@ export const VoicePage: Page = {
       if (label !== lastTimerLabel) {
         lastTimerLabel = label;
       }
-      if (recorder.elapsedSeconds >= MAX_RECORDING_SECONDS) {
+      if (recorder.elapsedSeconds >= maxSecs) {
         void stopAndDispatch(ctx);
-      } else if (!recorder.isEmpty && recorder.silenceSeconds >= SILENCE_AUTOSTOP_SECONDS) {
+      } else if (silenceSecs > 0 && !recorder.isEmpty && recorder.silenceSeconds >= silenceSecs) {
         void stopAndDispatch(ctx);
       }
     }, TICK_MS);
@@ -201,7 +203,10 @@ async function stopAndDispatch(ctx: PageContext): Promise<void> {
 
 async function getTranscription(): Promise<string> {
   if (recorder.isEmpty) {
-    console.warn('[voice] no audio captured — using sim fallback utterance');
+    // Packed builds must not invent an utterance — see the matching note in
+    // compose.ts. A fabricated command is worse than an honest error.
+    if (!import.meta.env.DEV) throw new Error('no audio from the mic');
+    console.warn('[voice] no audio captured — DEV fallback utterance');
     return SIM_FALLBACK_UTTERANCE;
   }
   const stt = await apiPostAudio<SttResult>('/api/stt', recorder.toBuffer(), { is_raw_pcm: 'true' });
@@ -228,7 +233,7 @@ async function dispatch(ctx: PageContext, action: VoiceAction, transcription: st
     case 'navigate': {
       const page = pageFor(action.params.target);
       if (page) await ctx.router.go(page);
-      else await ctx.router.go(makeStubPage('voice-nav', 'TODO', `'${action.params.target}' coming in P17.`));
+      else await ctx.router.go(makeStubPage('voice-nav', 'On the phone.', `'${action.params.target}' lives on the phone dashboard.`));
       return;
     }
     case 'cancel':
@@ -261,8 +266,8 @@ async function dispatch(ctx: PageContext, action: VoiceAction, transcription: st
       await ctx.router.go(
         makeStubPage(
           'voice-reply-stub',
-          'TODO',
-          `Reply by-name needs P17 polish.\nName: ${action.params.to_name ?? '?'}`,
+          'Not yet.',
+          `Open Inbox and tap reply.\nHeard: ${action.params.to_name ?? 'no name'}`,
         ),
       );
       return;
@@ -270,8 +275,8 @@ async function dispatch(ctx: PageContext, action: VoiceAction, transcription: st
       await ctx.router.go(
         makeStubPage(
           'voice-search-stub',
-          'TODO',
-          `Search ships in P17.\nQuery: ${action.params.query}\nScope: ${action.params.scope}`,
+          'Not yet.',
+          `Search isn't on the glasses yet.\nQuery: ${action.params.query}`,
         ),
       );
       return;
@@ -279,8 +284,8 @@ async function dispatch(ctx: PageContext, action: VoiceAction, transcription: st
       await ctx.router.go(
         makeStubPage(
           'voice-settings-stub',
-          'TODO',
-          `Settings change ships in P17.\n${action.params.key} = ${action.params.value}`,
+          'On the phone.',
+          `Change this on the phone dashboard.\n${action.params.key} = ${action.params.value}`,
         ),
       );
       return;

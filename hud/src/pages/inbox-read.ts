@@ -1,57 +1,85 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage } from '../render.js';
+import { showPage, center } from '../render.js';
+import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 import { apiPost } from '../api.js';
 import { stagePrefillForReply } from '../draft.js';
 import { ComposePage } from './compose.js';
 import type { InboxItem } from './inbox.js';
 
 /**
- * Inbox read view — shows the full body of one inbox item as list lines
- * (so it scrolls natively when the body is long). Tap → start a reply
+ * Inbox read view — the full body of one message, rendered as list rows so
+ * the firmware scrolls it natively. Tapping the reply row starts a reply
  * with TO + VIA locked to the sender.
  *
  * Marks the item read via /api/inbox/:id/read on mount (fire-and-forget).
+ *
+ * Shape: chrome + title text 2 + list 5 (see the note in inbox.ts — this
+ * page carried the same pre-chrome {1, 2, 3} shape).
  */
 
-const TITLE_ID = 1;
-const LIST_ID = 2;
-const FOOTER_ID = 3;
+const TITLE_ID = 2;
+const LIST_ID = 5;
+
+const TITLE_H = 26;
+const LIST_Y = BODY_TOP + TITLE_H + 4;
+const LIST_H = BODY_BOTTOM - LIST_Y;
+
+const REPLY_LABEL = '── reply ──';
+const MAX_BODY_ROWS = 17; // 20-item cap minus reply row + spacer headroom
 
 export function makeInboxReadPage(item: InboxItem): Page {
   return {
     id: 'inbox-read',
 
     async mount(ctx: PageContext): Promise<void> {
-      // Mark as read in the background.
       if (!item.read_at) {
         void apiPost(`/api/inbox/${item.id}/read`).catch(() => {});
       }
 
-      const title = clip(`${item.channel.toUpperCase()}  ${item.from_address}`, 56);
-      const lines = bodyToLines(item);
+      const title = clip(`${item.channel.toUpperCase()}  ${item.from_address}`, 46);
+      // Reply is the FIRST row, not a trailing one: it is the only action on
+      // this page and the wearer should not have to scroll a long body to
+      // find it.
+      const rows = [REPLY_LABEL, ...bodyToLines(item)];
 
       await showPage(ctx.bridge, {
         texts: [
-          { id: TITLE_ID, x: 0, y: 0, w: 576, h: 44, capture: false, content: title },
           {
-            id: FOOTER_ID,
+            id: TITLE_ID,
             x: 0,
-            y: 236,
+            y: BODY_TOP,
             w: 576,
-            h: 48,
+            h: TITLE_H,
+            border: 0,
+            padding: 4,
             capture: false,
-            content: '[TAP] reply  [SCRL] read  [X2] back',
+            content: center(title),
           },
         ],
-        lists: [{ id: LIST_ID, x: 0, y: 48, w: 576, h: 184, capture: true, items: lines }],
+        lists: [
+          {
+            id: LIST_ID,
+            x: 0,
+            y: LIST_Y,
+            w: 576,
+            h: LIST_H,
+            border: 1,
+            padding: 6,
+            capture: true,
+            items: rows,
+          },
+        ],
+        chrome: { hint: 'tap reply  ·  scroll to read  ·  2x for home' },
       });
     },
 
     async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
       if (event.kind !== 'list-select') return;
-      // Stage the reply prefill so when ComposePage's transcribe completes,
-      // the new draft is built with TO + VIA already filled and locked.
+      if (event.containerID !== LIST_ID) return;
+      // Only the reply row acts; body rows are inert text.
+      if (event.index !== 0) return;
+
       const isEmail = item.channel === 'email';
       stagePrefillForReply({
         recipient: {
@@ -76,25 +104,22 @@ export function makeInboxReadPage(item: InboxItem): Page {
 }
 
 function senderName(item: InboxItem): string {
-  // Full address — works for both SMS (E.164 phone) and email. Keeps the
-  // reply Confirm title meaningful instead of just the local part.
+  // Full address — works for both SMS (E.164) and email, and keeps the reply
+  // Confirm title meaningful instead of just a local part.
   return item.from_address;
 }
 
 function bodyToLines(item: InboxItem): string[] {
-  // For email, show the subject as the first list item (visually distinct),
-  // then the body. Each list item caps at 32 chars (P13 SDK quirk).
   const out: string[] = [];
   if (item.channel === 'email' && item.subject) {
-    out.push(`Re: ${clip(item.subject, 28)}`);
+    out.push(clip(item.subject, 32));
     out.push('');
   }
-  // Soft-wrap body at ~30 chars per line so the native list renders cleanly.
-  for (const line of softWrap(item.body, 30)) {
+  for (const line of softWrap(item.body, 32)) {
     out.push(line);
-    if (out.length >= 18) break;
+    if (out.length >= MAX_BODY_ROWS) break;
   }
-  return out;
+  return out.length > 0 ? out : ['(empty message)'];
 }
 
 function softWrap(s: string, width: number): string[] {
@@ -108,8 +133,8 @@ function softWrap(s: string, width: number): string[] {
     let line = '';
     for (const w of words) {
       if ((line + ' ' + w).trim().length > width) {
-        out.push(line.trim());
-        line = w;
+        if (line) out.push(line.trim());
+        line = w.slice(0, width);
       } else {
         line = (line + ' ' + w).trim();
       }

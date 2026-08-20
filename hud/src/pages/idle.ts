@@ -1,29 +1,41 @@
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
-import { showPage, center } from '../render.js';
+import { showPage, center, listRowsVisible } from '../render.js';
 import { BODY_TOP, BODY_BOTTOM, setAppStatus } from '../chrome.js';
 import { getPairing } from '../kvs.js';
 import { apiGet, HudApiError } from '../api.js';
 import { getBridge } from '../bridge.js';
+import { getPrefs, hydratePrefs } from '../prefs.js';
+import { Pulse, PULSE_HEIGHT } from '../pulse.js';
 import { ComposePage } from './compose.js';
-import { Pulse } from '../pulse.js';
+import { InboxPage } from './inbox.js';
+import { VoicePage } from './voice.js';
+import { StylePage } from './style.js';
 
 /**
- * Idle — the calm front door of VOX.
+ * Idle — the VOX home screen.
  *
- * One real action: a big "tap to speak" capture surface. Above it, a calm
- * breathing pulse (see `pulse.ts`) signals "VOX is alive and listening."
- * Status lives in the chrome header; last sent / unread count lives in
- * the chrome footer. Anything else — inbox, contacts, history — is one
- * voice command away.
+ * This is the page the wearer lands on at launch and returns to from
+ * everywhere, so it has to answer "what can VOX do?" without a tap. Up to
+ * v0.1.16 it was a breathing pulse plus a single full-width "tap to speak"
+ * capture surface: every feature except voice-compose was unreachable from
+ * the glasses, and any stray tap (including the temple touch that launched
+ * the app) dropped the wearer straight into the recording screen.
  *
- * Layout (chrome adds id 90 + 99 automatically; body uses 2 + 3):
- *   y BODY_TOP..+96             pulse        (id 2, text, no capture, animated)
- *   y BODY_TOP+104..BODY_BOTTOM tap target   (id 3, text, CAPTURE)
+ * v0.1.17 makes it a real menu. The pulse shrinks to a 3-line breath and the
+ * rest of the body is a native scrollable action list. A stray tap now lands
+ * on a highlighted menu row instead of opening the microphone.
+ *
+ * Layout (chrome adds ids 90 + 99; the renderer pads text 3, 4):
+ *   y BODY_TOP .. +52   pulse  (id 2, text, no capture, animated)
+ *   y BODY_TOP+56 ..    menu   (id 5, list, CAPTURE)
  */
 
 const PULSE_ID = 2;
-const TAP_ID = 3;
+const MENU_ID = 5;
+
+const MENU_Y = BODY_TOP + PULSE_HEIGHT.compact + 4;
+const MENU_H = BODY_BOTTOM - MENU_Y;
 
 interface IdleStatus {
   twilio: boolean;
@@ -42,13 +54,36 @@ interface HistoryItem {
 
 interface LastSent {
   name: string;
-  body: string;
   minutesAgo: number;
   channel: 'sms' | 'email';
 }
 
+/** One menu row: the label the firmware draws, and what a tap does. */
+interface MenuRow {
+  key: string;
+  label: string;
+  run: (ctx: PageContext) => Promise<void>;
+}
+
 let lastSent: LastSent | null = null;
+let unreadCount = 0;
 let pulse: Pulse | null = null;
+let rows: MenuRow[] = [];
+
+function buildRows(): MenuRow[] {
+  // Cap the badge: a first IMAP sync backfills the whole mailbox (I-004), so
+  // this can legitimately read in the thousands, which is noise rather than
+  // information on a 32-char row.
+  const badge = unreadCount > 99 ? '99+ new' : unreadCount > 0 ? `${unreadCount} new` : '';
+  const inboxLabel = badge ? `Inbox`.padEnd(22) + badge : 'Inbox';
+  const style = capitalize(getPrefs().default_tone);
+  return [
+    { key: 'speak', label: 'Speak a message', run: (ctx) => ctx.router.push(ComposePage) },
+    { key: 'inbox', label: inboxLabel, run: (ctx) => ctx.router.push(InboxPage) },
+    { key: 'voice', label: 'Voice command', run: (ctx) => ctx.router.push(VoicePage) },
+    { key: 'style', label: `Style: ${style}`, run: (ctx) => ctx.router.push(StylePage) },
+  ];
+}
 
 export const IdlePage: Page = {
   id: 'idle',
@@ -56,30 +91,36 @@ export const IdlePage: Page = {
   async mount(ctx: PageContext): Promise<void> {
     const paired = (await getPairing()) !== null;
     if (!paired) {
+      rows = [];
       await renderUnpaired(ctx);
       return;
     }
 
     await renderIdle(ctx);
-    pulse = new Pulse(ctx.bridge, PULSE_ID);
+    // Pulse.start() is idempotent, but we also own the instance here so a
+    // re-mount can never strand a second interval on the same container.
+    pulse?.stop();
+    pulse = new Pulse(ctx.bridge, PULSE_ID, 'compact');
     pulse.start();
 
-    // Fire-and-forget refresh. When it lands, patch the chrome in place
-    // via the cached app-status (no re-mount, no flicker).
+    // Fire-and-forget refresh. When it lands, re-render with real counts.
     void refreshAndPatch(ctx);
   },
 
   async onEvent(event: NormalizedEvent, ctx: PageContext): Promise<void> {
-    if (event.kind === 'tap' || event.kind === 'list-select') {
-      // Tap on Idle starts a fresh compose — the most common intent. The
-      // universal voice-command classifier (VoicePage) is reachable via
-      // an explicit "voice command" entry later if we add one back.
-      await ctx.router.push(ComposePage);
+    if (event.kind === 'foreground-enter') {
+      // remount() runs unmount() first — that's what stops the old pulse.
+      await ctx.router.remount();
       return;
     }
-    if (event.kind === 'foreground-enter') {
-      await IdlePage.mount(ctx);
-    }
+    if (event.kind !== 'list-select') return;
+    // Only our own menu container drives navigation. The renderer pads every
+    // chrome page with off-screen list ids; without this check a selection
+    // event attributed to one of those would fire a real action.
+    if (event.containerID !== MENU_ID) return;
+    const row = rows[event.index];
+    if (!row) return;
+    await row.run(ctx);
   },
 
   unmount(): void {
@@ -89,9 +130,7 @@ export const IdlePage: Page = {
 };
 
 async function renderIdle(ctx: PageContext): Promise<void> {
-  // Pulse container is taller now (160px) to fit the 5-line breathing
-  // diamond. Tap-to-speak surface gets the remaining ~50px below — enough
-  // for the centered "tap to speak" line.
+  rows = buildRows();
   await showPage(ctx.bridge, {
     texts: [
       {
@@ -99,22 +138,24 @@ async function renderIdle(ctx: PageContext): Promise<void> {
         x: 0,
         y: BODY_TOP,
         w: 576,
-        h: 160,
+        h: PULSE_HEIGHT.compact,
         border: 0,
-        padding: 4,
+        padding: 2,
         capture: false,
-        content: Pulse.initialFrame(),
+        content: Pulse.initialFrame('compact'),
       },
+    ],
+    lists: [
       {
-        id: TAP_ID,
+        id: MENU_ID,
         x: 0,
-        y: BODY_TOP + 164,
+        y: MENU_Y,
         w: 576,
-        h: BODY_BOTTOM - (BODY_TOP + 164),
-        border: 0,
+        h: MENU_H,
+        border: 1,
         padding: 6,
         capture: true,
-        content: center('tap to speak'),
+        items: rows.map((r) => r.label),
       },
     ],
     chrome: { hint: footerHint() },
@@ -125,7 +166,7 @@ async function renderUnpaired(ctx: PageContext): Promise<void> {
   await showPage(ctx.bridge, {
     texts: [
       {
-        id: TAP_ID,
+        id: PULSE_ID,
         x: 0,
         y: BODY_TOP,
         w: 576,
@@ -141,10 +182,8 @@ async function renderUnpaired(ctx: PageContext): Promise<void> {
 }
 
 function footerHint(): string {
-  // Footer always tells the user that a double-tap exits — this is the
-  // ONE page where 2x means leave-the-app (Even Hub submission gate), so
-  // we surface it explicitly rather than letting the wearer guess. When
-  // there's a last-sent line it rides next to the exit hint.
+  // Idle is the ONE page where a double-tap leaves the app (Even Hub
+  // submission gate), so we always say so rather than let the wearer guess.
   const exit = '2x to exit';
   if (!lastSent) return exit;
   const method = lastSent.channel === 'sms' ? 'SMS' : 'Email';
@@ -161,11 +200,18 @@ function formatAgo(minutes: number): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function capitalize(s: string): string {
+  return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
+}
+
 async function refreshAndPatch(ctx: PageContext): Promise<void> {
   const [idleData, history, deviceInfo] = await Promise.all([
     fetchIdleStatus(),
     fetchLastSent(),
     fetchBattery(),
+    // Hydrate preferences on the same round trip so the Style row shows the
+    // tone the dashboard actually has saved.
+    hydratePrefs().catch(() => undefined),
   ]);
   setAppStatus({
     twilio: idleData?.twilio ?? false,
@@ -173,10 +219,11 @@ async function refreshAndPatch(ctx: PageContext): Promise<void> {
     battery: deviceInfo,
     unread: idleData?.unread ?? 0,
   });
+  unreadCount = idleData?.unread ?? 0;
   if (history) lastSent = history;
 
-  // Re-render the page so the new chrome values land. Cheap — same shape
-  // as the initial mount, just different text content.
+  // Re-render so the new counts + style land. Same container shape as the
+  // initial mount, so this is a cheap in-place rebuild.
   if (ctx.router.currentId === 'idle') {
     await renderIdle(ctx);
   }
@@ -203,12 +250,7 @@ async function fetchLastSent(): Promise<LastSent | null> {
       0,
       Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000),
     );
-    return {
-      name: item.contact_name ?? 'someone',
-      body: item.body,
-      minutesAgo,
-      channel: item.channel,
-    };
+    return { name: item.contact_name ?? 'someone', minutesAgo, channel: item.channel };
   } catch {
     return null;
   }
@@ -223,8 +265,7 @@ async function fetchBattery(): Promise<number | null> {
   }
 }
 
-/** Exposed for the voice-anywhere classifier — opens inbox from any page. */
-export async function navigateToInbox(ctx: PageContext): Promise<void> {
-  const { InboxPage } = await import('./inbox.js');
-  return ctx.router.push(InboxPage);
+/** The menu height is derived, not hand-tuned — shout if a row won't fit. */
+if (listRowsVisible(MENU_H) < 4) {
+  console.warn(`[idle] menu shows ${listRowsVisible(MENU_H)} of 4 rows — a feature is unreachable`);
 }

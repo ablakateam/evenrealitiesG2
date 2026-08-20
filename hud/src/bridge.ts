@@ -15,11 +15,28 @@ import {
  * can switch on cleanly.
  */
 export type NormalizedEvent =
-  | { kind: 'tap' }
+  | { kind: 'tap'; containerID: number | null }
   | { kind: 'double-tap' }
   | { kind: 'scroll-up' }
   | { kind: 'scroll-down' }
-  | { kind: 'list-select'; containerID: number; index: number; name: string }
+  | {
+      kind: 'list-select';
+      containerID: number;
+      index: number;
+      name: string;
+      /**
+       * False when the firmware omitted `currentSelectItemIndex` entirely.
+       *
+       * Verified on the simulator (0.9.0): a tap on the FIRST row sends
+       * `{containerID, containerName}` with no index — protobuf drops the
+       * zero — while a tap after scrolling sends `currentSelectItemIndex: 2`.
+       * So `index: 0` is genuinely correct for an omitted field, and pages
+       * must not treat "omitted" as "unknown". This flag exists so a page
+       * that puts a destructive action on row 0 can require an explicit
+       * selection before firing it.
+       */
+      indexReported: boolean;
+    }
   | { kind: 'foreground-enter' }
   | { kind: 'foreground-exit' }
   | { kind: 'system-exit' }
@@ -61,6 +78,7 @@ export function normalizeEvent(event: EvenHubEvent): NormalizedEvent | null {
         containerID: event.listEvent.containerID ?? 0,
         index: event.listEvent.currentSelectItemIndex ?? 0,
         name: event.listEvent.currentSelectItemName ?? '',
+        indexReported: event.listEvent.currentSelectItemIndex !== undefined,
       };
     }
     if (t === OsEventTypeList.SCROLL_TOP_EVENT) return { kind: 'scroll-up' };
@@ -71,7 +89,7 @@ export function normalizeEvent(event: EvenHubEvent): NormalizedEvent | null {
   // Text container events
   if (event.textEvent) {
     const t = event.textEvent.eventType ?? OsEventTypeList.CLICK_EVENT;
-    return eventFromType(t);
+    return eventFromType(t, event.textEvent.containerID ?? null);
   }
 
   // System events (taps, lifecycle, IMU)
@@ -85,16 +103,18 @@ export function normalizeEvent(event: EvenHubEvent): NormalizedEvent | null {
         z: event.sysEvent.imuData.z ?? 0,
       };
     }
-    return eventFromType(t);
+    // A sysEvent carries no containerID — it's a raw temple touch that the
+    // firmware did not attribute to any container.
+    return eventFromType(t, null);
   }
 
   return null;
 }
 
-function eventFromType(t: OsEventTypeList): NormalizedEvent | null {
+function eventFromType(t: OsEventTypeList, containerID: number | null): NormalizedEvent | null {
   switch (t) {
     case OsEventTypeList.CLICK_EVENT:
-      return { kind: 'tap' };
+      return { kind: 'tap', containerID };
     case OsEventTypeList.DOUBLE_CLICK_EVENT:
       return { kind: 'double-tap' };
     case OsEventTypeList.SCROLL_TOP_EVENT:

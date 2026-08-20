@@ -56,3 +56,8 @@ server/dump.rdb
 STORE_LISTING.md
 even hub screens/
 qpp screens/
+
+# Simulator/device captures. These render real contact names, phone numbers
+# and email addresses straight onto the glasses frame, and the pre-commit PII
+# guard greps text — it cannot see PII baked into a PNG. Keep them local.
+screenshots/

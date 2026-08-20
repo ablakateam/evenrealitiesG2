@@ -5,6 +5,8 @@ import {
   ListContainerProperty,
   ListItemContainerProperty,
   TextContainerUpgrade,
+  validateEvenHubPageContainer,
+  formatEvenHubPageContainerValidationError,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk';
 import { chromeHeaderBox, chromeFooterBox, type ChromeOpts } from './chrome.js';
@@ -61,6 +63,40 @@ export interface ListBox {
   capture?: boolean;
   border?: number;
   padding?: number;
+  /**
+   * Draw the firmware selection highlight. Defaults to true for real menus.
+   * The off-screen padding lists (see CHROME_BODY_LIST_IDS) set this false so
+   * the firmware never routes a selection event to a container the user
+   * cannot see — that used to surface as a phantom tap on the mounted page.
+   */
+  selectable?: boolean;
+}
+
+/**
+ * Vertical budget for a native list.
+ *
+ * Measured on the simulator at 576x288 by reading row baselines off a
+ * rendered 7-item list (y = 99, 140, 181, 219, ...): the firmware draws each
+ * row at a ~40 px pitch — glyph line, selection border and inter-item gap —
+ * and the container's own `paddingLength` applies top AND bottom.
+ *
+ * An earlier estimate of 32 px is what produced the v0.1.15 bug: Confirm's
+ * action list was sized for three rows at 32 px (78 px) but the third row
+ * needed 120 px, so the style entry was never drawn at all. Rows past the
+ * container's height are NOT scrolled to — they simply do not render.
+ *
+ * Always size a menu list with this helper instead of a hand-picked pixel
+ * height so a row can never fall off the bottom again.
+ */
+export const LIST_ROW_PITCH = 40;
+
+export function listHeightFor(rows: number, padding = 6): number {
+  return rows * LIST_ROW_PITCH + padding * 2 + 2;
+}
+
+/** How many rows a list of height `h` can actually show. */
+export function listRowsVisible(h: number, padding = 6): number {
+  return Math.floor((h - padding * 2 - 2) / LIST_ROW_PITCH);
 }
 
 function textProp(box: TextBox): TextContainerProperty {
@@ -98,7 +134,7 @@ function listProp(box: ListBox): ListContainerProperty {
     itemContainer: new ListItemContainerProperty({
       itemCount: items.length,
       itemWidth: box.w - (box.padding ?? 6) * 2,
-      isItemSelectBorderEn: 1,
+      isItemSelectBorderEn: box.selectable === false ? 0 : 1,
       itemName: items,
     }),
   });
@@ -148,7 +184,21 @@ function hiddenText(id: number): TextBox {
 }
 
 function hiddenList(id: number): ListBox {
-  return { id, x: 0, y: 290, w: 32, h: 16, border: 0, padding: 0, items: [' '], capture: false };
+  // `selectable: false` matters as much as the off-screen position: a padding
+  // list that still declares a selection border can win a firmware selection
+  // event, which the mounted page then reads as a real menu tap.
+  return {
+    id,
+    x: 0,
+    y: 290,
+    w: 32,
+    h: 16,
+    border: 0,
+    padding: 0,
+    items: [' '],
+    capture: false,
+    selectable: false,
+  };
 }
 
 /** Render a page. Picks createStartUp vs rebuild automatically. */
@@ -173,6 +223,15 @@ export async function showPage(bridge: EvenAppBridge, spec: PageSpec): Promise<b
   const textObject = [...bodyTexts, ...chromeTexts].map(textProp);
   const listObject = bodyLists.map(listProp);
   const total = textObject.length + listObject.length;
+
+  // SDK 0.0.14 ships client-side validators for every rule the native layer
+  // can reject a page on. They run entirely in our bundle (no host round-trip,
+  // so this does NOT raise our min_sdk_version) and turn what used to be a
+  // silent `false` from the bridge into a named, loggable cause.
+  const validation = validateEvenHubPageContainer({ textObject, listObject });
+  if (!validation.valid) {
+    console.warn(`[render] page container invalid: ${formatEvenHubPageContainerValidationError(validation)}`);
+  }
 
   if (!firstPageShown) {
     const result = await bridge.createStartUpPageContainer(

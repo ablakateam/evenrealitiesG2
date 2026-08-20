@@ -1,4 +1,6 @@
 import type { ComposeResult, IntentResult, VariantResult, Tone } from './api.js';
+import { sanitizeForGlasses } from './text.js';
+import { getPrefs } from './prefs.js';
 
 /**
  * Compose draft — the shared, editable state between the confirm page and the
@@ -53,7 +55,14 @@ let pendingPrefill: {
   locked: { recipient: boolean; channel: boolean };
 } | null = null;
 
-const DEFAULT_TONE: Tone = 'casual';
+/**
+ * Fallback only. The real starting style is the wearer's saved
+ * `default_tone` from /api/config (see prefs.ts), so a style chosen on the
+ * phone dashboard or from the glasses Style menu is what a new message
+ * actually starts in. Before v0.1.17 this constant WAS the policy, which is
+ * why every message came out Casual no matter what the dashboard said.
+ */
+const FALLBACK_TONE: Tone = 'casual';
 
 /** Stage a recipient + channel lock before pushing ComposePage (reply flow). */
 export function stagePrefillForReply(prefill: NonNullable<typeof pendingPrefill>): void {
@@ -70,7 +79,7 @@ export function setDraftFromCompose(result: ComposeResult): ComposeDraft | null 
     return null;
   }
   const intent = result.intent;
-  const tone = pickInitialTone(result.variants, DEFAULT_TONE);
+  const tone = pickInitialTone(result.variants, getPrefs().default_tone || FALLBACK_TONE);
   const channel: ComposeDraft['channel'] =
     intent.channel === 'ambiguous' ? 'sms' : intent.channel;
   current = {
@@ -120,8 +129,21 @@ export function setSubject(subject: string | null): void {
   current.subject = subject;
 }
 
-/** Body text for the currently-selected tone (falls back to original / transcription). */
+/**
+ * Body text for the currently-selected tone (falls back to original /
+ * transcription).
+ *
+ * The result is run through `sanitizeForGlasses` so the Confirm screen and
+ * the outbound send agree byte-for-byte. Rewrites routinely come back with
+ * curly apostrophes and em-dashes that the G2 font cannot draw (I-003); if
+ * we sanitized only at render time the wearer would approve one string and
+ * transmit a different one.
+ */
 export function getBodyText(d: ComposeDraft = current!): string {
+  return sanitizeForGlasses(rawBodyText(d));
+}
+
+function rawBodyText(d: ComposeDraft): string {
   // Pick the active variant when it has usable text. A variant counts as
   // "empty" not just when the field is "" but also when it shrunk down to
   // whitespace — some rewrites surprise us with a stray newline only.
@@ -136,6 +158,13 @@ export function getBodyText(d: ComposeDraft = current!): string {
   if (d.baseIntent.body.trim().length > 0) return d.baseIntent.body;
   if (d.transcription.trim().length > 0) return d.transcription;
   return '(no preview)';
+}
+
+/** Body text for a specific tone — used to preview a style before applying it. */
+export function getBodyTextForTone(tone: Tone, d: ComposeDraft = current!): string {
+  const v = d.variants.find((x) => x.tone === tone);
+  if (v && !v.error && v.text.trim().length > 0) return sanitizeForGlasses(v.text);
+  return getBodyText(d);
 }
 
 /** Variant for the currently-selected tone, or undefined if not cached. */

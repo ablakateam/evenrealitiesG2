@@ -1,3 +1,4 @@
+import { AudioInputSource } from '@evenrealities/even_hub_sdk';
 import type { Page, PageContext } from '../router.js';
 import type { NormalizedEvent } from '../bridge.js';
 import { showPage, updateText, center } from '../render.js';
@@ -5,6 +6,7 @@ import { BODY_TOP, BODY_BOTTOM } from '../chrome.js';
 import { AudioRecorder, formatElapsed } from '../audio.js';
 import { hudApi, apiPostAudio, HudApiError, type ComposeResult } from '../api.js';
 import { setDraftFromCompose } from '../draft.js';
+import { getPrefs } from '../prefs.js';
 import { ConfirmPage } from './confirm.js';
 import { makeStubPage } from './stub.js';
 
@@ -29,8 +31,6 @@ import { makeStubPage } from './stub.js';
 const TITLE_ID = 2;
 const METER_ID = 3;
 
-const MAX_RECORDING_SECONDS = 60;
-const SILENCE_AUTOSTOP_SECONDS = 6;
 const TICK_MS = 250;
 
 const SIM_FALLBACK_TRANSCRIPTION =
@@ -60,18 +60,25 @@ export const ComposePage: Page = {
     await render(ctx);
 
     try {
-      await ctx.bridge.audioControl(true);
+      // Name the input explicitly. The source argument is optional and we
+      // used to omit it, which left the choice of glasses-vs-phone mic to
+      // the host's default — if that default is ever the phone, the wearer
+      // speaks into the temple and we capture silence, then quietly fall
+      // back to a canned transcription (see transcribe()). Being explicit
+      // removes a whole class of "it heard nothing" hardware reports.
+      await ctx.bridge.audioControl(true, AudioInputSource.Glasses);
     } catch (err) {
       console.warn('[compose] audioControl(true) failed:', err);
     }
 
+    const { max_recording_seconds: maxSecs, silence_autostop_seconds: silenceSecs } = getPrefs();
     tick = setInterval(() => {
       if (state !== 'recording') return;
       // Live meter patch — only updates the meter container.
       void updateText(ctx.bridge, METER_ID, meterContent());
-      if (recorder.elapsedSeconds >= MAX_RECORDING_SECONDS) {
+      if (recorder.elapsedSeconds >= maxSecs) {
         void stopAndTranscribe(ctx);
-      } else if (!recorder.isEmpty && recorder.silenceSeconds >= SILENCE_AUTOSTOP_SECONDS) {
+      } else if (silenceSecs > 0 && !recorder.isEmpty && recorder.silenceSeconds >= silenceSecs) {
         void stopAndTranscribe(ctx);
       }
     }, TICK_MS);
@@ -82,6 +89,9 @@ export const ComposePage: Page = {
       recorder.addChunk(event.pcm);
       return;
     }
+    // The capture container on this page is a text box, so a tap arrives as
+    // 'tap'; keep 'list-select' too because the chrome pad adds a list and
+    // some firmware builds attribute the touch to it.
     if (event.kind === 'tap' || event.kind === 'list-select') {
       if (state === 'recording') {
         await stopAndTranscribe(ctx);
@@ -191,14 +201,23 @@ async function stopAndTranscribe(ctx: PageContext): Promise<void> {
   }
 }
 
+/** Under ~125 ms of 16 kHz mono 16-bit PCM — nothing Whisper can use. */
+const MIN_PCM_BYTES = 2048;
+
 async function transcribe(): Promise<ComposeResult> {
-  // Anything under ~2 KB of PCM (~125ms at 16kHz mono 16-bit) is too short
-  // for Whisper to do anything useful — happens on the simulator with no
-  // mic, or if the user taps stop instantly. Fall back to a stock
-  // transcription so the rest of the flow stays exercisable end-to-end.
-  const MIN_PCM_BYTES = 2048;
   if (recorder.isEmpty || recorder.byteLength < MIN_PCM_BYTES) {
-    console.warn(`[compose] only ${recorder.byteLength}B captured — using fallback transcription`);
+    // In a PACKED build this must be a hard error. The stock transcription
+    // below composes a complete, plausible message ("running about ten
+    // minutes late") addressed to a real contact — if the glasses mic ever
+    // returns nothing on hardware, the silent fallback would walk the wearer
+    // into confirming and sending words they never said. Dev builds keep it
+    // so the simulator can still exercise the flow end to end.
+    if (!import.meta.env.DEV) {
+      throw new Error(
+        recorder.isEmpty ? 'no audio from the mic' : 'that was too short to hear',
+      );
+    }
+    console.warn(`[compose] only ${recorder.byteLength}B captured — DEV fallback transcription`);
     return hudApi<ComposeResult>('/api/compose', {
       method: 'POST',
       body: { transcription: SIM_FALLBACK_TRANSCRIPTION },

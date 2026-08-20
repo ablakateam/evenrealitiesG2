@@ -8,12 +8,12 @@
 
 | Field | Value |
 |---|---|
-| **Current phase** | P18 ✓ complete → ready for P19 prep |
-| **% complete (overall)** | 95% (P0–P18 done) |
-| **Last update** | 2026-05-15 |
-| **Active session** | P18 closed — per-user hourly rate limits wired on the four expensive routes (stt 60/h, rewrite/voice-command 1200/h, sms 200/h, email 400/h) using the existing `rate_limit_state` table; fails open on metering errors so a counter bug never blocks real work. `POST /api/telemetry/error` route writes to `client_errors`; HUD `main.ts` subscribes to global `error` + `unhandledrejection` events and ships them best-effort, plus the global event subscriber now closes the mic on FOREGROUND_EXIT so backgrounded VOX never drains the battery. |
-| **Blockers** | — |
-| **Next milestone** | P19-prep — build `.ehpk`, smoke-test it on the simulator end-to-end before the real-glasses test session |
+| **Current phase** | P19-prep active — iterating on HUD + companion between real-G2 test sessions |
+| **% complete (overall)** | 97% (P0–P18 done; P19 in test-fix-repack loop; P20 pending) |
+| **Last update** | 2026-08-20 |
+| **Active session** | v0.1.17 packed (`hud/vox.ehpk`, 55670 B). Answers both v0.1.16 hardware findings: (1) Idle is now a real 4-row hub menu and a Router input-settle window stops the launch tap from bleeding into Compose, so VOX no longer flashes home and jumps to the message screen; (2) message style is selectable on the glasses again — Confirm's action list was sized at a 32 px row pitch when the firmware actually draws at ~40 px, so the tone row was never rendered. Also: Inbox/Voice reachable again, style preference shared with the dashboard, outbound rewrites sanitized for the G2 font, SDK 0.0.13 → 0.0.14. |
+| **Blockers** | Awaiting hardware install + test of v0.1.17. Portal upload + Beta-track flip is user-driven. |
+| **Next milestone** | Hardware verification of v0.1.17 → any final polish → P20 (Even Hub Beta submission + Store listing) |
 
 ---
 
@@ -38,7 +38,7 @@
 - [x] **P16** Voice-anywhere *(complete 2026-05-15 — server `/api/voice-command` classifier route + `buildVoiceCommandSystemPrompt` (compose·reply·navigate·search·save_contact·settings·cancel·unknown), HUD `VoicePage` (record → STT → classifier → dispatch), Idle has new `> Speak (voice)` + `> Open inbox` shortcuts at top; compose-intent dispatch re-runs `/api/compose` with the transcription and routes through Confirm; save_contact intent POSTs `/api/contacts` and shows a success stub; navigate intent calls `router.go(page)`. Long-press temple gesture verified impossible on the current SDK (Risk R1) — explicit Speak shortcut replaces it. Curl-verified: 5 critical intents return structured actions in <1s.)*
 - [x] **P17** Polish (microcopy + empty/error states + first-run cue) *(complete 2026-05-15 — first-run `VoiceCuePage` (KVS `seen_voice_cue` flag gates it; teaches the "> Speak" pattern with concrete example utterances), Inbox sender row shows the full from_address instead of just the local part, `InboxReadPage.senderName` returns the full from_address so reply titles read meaningfully, VoicePage error copy reworked to be warmer + suggest a concrete next step, SentPage auto-returns to Idle after 4 s (footer reads "back in 4s") with the timer cleared on tap / unmount, Compose + Voice `mount()` paths defensively clear any prior tick before scheduling a new one so retries don't leak timers.)*
 - [x] **P18** Hardening *(complete 2026-05-15 — server `rate-limit.ts` (per-user hourly buckets via the existing `rate_limit_state` table; fails open on metering errors so a counter bug never blocks real work) wired onto stt(60/h), rewrite(1200/h covers /api/compose + /api/voice-command), sms(200/h), email(400/h); 429 response includes Retry-After and an empathetic message. New `POST /api/telemetry/error` route persists client crash dumps to `client_errors`. HUD `main.ts` subscribes to global `error` + `unhandledrejection` events and ships them best-effort, plus the global event subscriber now closes the mic on FOREGROUND_EXIT_EVENT — backgrounded VOX never drains the battery. Outbox table + idempotency-by-client_uuid already in place from P5/P6.)*
-- [ ] **P19** Hardware testing
+- [~] **P19** Hardware testing *(in progress since 2026-05-15 — v0.1.2 through v0.1.16 shipped through the test/fix/repack loop. See "P19-prep sub-phase log" below for the version-by-version delta.)*
 - [ ] **P20** Even Hub submission
 
 Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
@@ -221,3 +221,56 @@ VPS: Vultr · Ubuntu 24.04.4 LTS · hostname `even` · IP `<VPS_IP>` · `vox-vps
 | Cold start (launch → idle) | <2s | — |
 | Battery drain per 30-min session | <10% | — |
 | IMAP IDLE uptime (24h) | 100% | — |
+
+---
+
+## P19-prep sub-phase log
+
+Real-hardware testing revealed rougher edges than the simulator surfaced.
+Each version below is one iteration of the test → fix → repack → re-upload
+loop. Ordered oldest → newest.
+
+| Version | Commit | Date | What changed | Discovered on |
+|---|---|---|---|---|
+| 0.1.2 | 108 | 2026-05-15 | Bake server+secret into the build (`hud/.env` inline) so pairing isn't required for the invited tester | Portal upload |
+| 0.1.3–0.1.10 | 109–121 | 2026-05-16 → 2026-07-28 | Router stack + context-aware double-tap back · persistent header + footer skeleton · Idle "tap to speak" · animated ASCII fox · Compose/Voice audio-meter layout · Confirm redesign with scrollable tones · footer trimmed to method+who+when | Sim + hardware |
+| 0.1.11 | `aada37f` | 2026-07-28 | Fox icon (SVG→PNG), first minimal phone companion, calm Idle centerpiece, chrome layout | Hardware |
+| 0.1.12 | `5e116ba` | 2026-07-28 | Companion launch-source detection via `onLaunchSource`, SMS↔Email channel toggle in Confirm, phone/email address verify | Hardware v0.1.11 test |
+| 0.1.13 | `c85bccc` | 2026-07-28 | Send/sent container shape (L:38 SDK crash), double-tap exit race fix, companion + HUD render in parallel | Hardware v0.1.12 test |
+| 0.1.14 | `9ccdd0e` | 2026-07-28 | Voice-cue chrome shape + accurate copy, surface active tone on Confirm, restore 2-line body, PH/EM labeling, sim meter placeholder | Hardware v0.1.13 test |
+| 0.1.14-pulse | `b0b16d4` + `9c4c020` | 2026-08-15 | Bigger bolder 5-line breathing pulse on Idle; email send no longer blocked by missing subject (auto-derive); error stub always lands on Idle if stack empty | Hardware v0.1.14 test |
+| 0.1.15 | `503037e` | 2026-08-15 | Companion polling + `visibilitychange` + cache-bust so new sends appear immediately; SDK 0.0.10 → 0.0.13 bump; Confirm redesigned to a compact 3-item main list (SEND / channel / "tone: X >") with a submenu picker so all 9 tones become discoverable | Hardware v0.1.14 test |
+| 0.1.16 | `37c2336` | 2026-08-20 | Phone companion rebuilt as a real app-home surface — header identity block, per-service health card, today tiles, quick-actions grid deep-linking to dashboard, richer activity feed with real preview text | User feedback "it looks very generic" |
+| 0.1.17 | *(pending)* | 2026-08-20 | **Launch behaviour:** Router input-settle window (700 ms) drops the temple tap that launches the app, so it can't bleed into the first mounted page; Idle rebuilt as a 4-row hub (Speak · Inbox · Voice command · Style) instead of one full-screen "tap to speak" capture surface. **Message style:** corrected `LIST_ROW_PITCH` 32 → 40 px (measured off rendered baselines) — Confirm's third row was never being drawn, which is why style looked locked to Casual; ready list is now a guaranteed-visible 2 rows (SEND / `Style: X >`) with a scrollable submenu. **Reachability:** Inbox + Inbox-read migrated to the chrome container shape and wired to the hub (they carried a pre-chrome `{1,2,3}` shape that would have tripped L:38); VoicePage reachable again. **Consistency:** HUD reads/writes `/api/config`, so `default_tone` is shared by the glasses Style menu, a new draft's starting tone, and the companion's new style card. **Correctness:** outbound rewrites sanitized for the G2 font (I-003); packed builds no longer substitute a canned transcription when the mic returns nothing; explicit `AudioInputSource.Glasses`; single-sourced version; 4 orphaned picker pages deleted (390 LOC). SDK 0.0.13 → 0.0.14, CLI → 0.1.14, simulator → 0.9.0 | Hardware v0.1.16 test |
+
+**Current .ehpk:** `hud/vox.ehpk` (55670 bytes, whitelist points at
+the production origin baked in at build time via `hud/.env`).
+`min_sdk_version` deliberately stays at `0.0.13`: the build depends on
+0.0.14 for its **client-side** page validators, which run inside our own
+bundle and need nothing from the host app. The host-side additions in
+0.0.14 (the OS contextual menu, text brightness) are NOT used, so an older
+Even Realities phone app still launches this build.
+
+**Cadence:** each real-G2 session yields 3–5 concrete issues → 1–3
+fixes per version → sim re-verification → new ehpk → portal upload
+(remember: flip to **Beta** track or it silently shows "test version
+expired" to the tester).
+
+**Pending hardware verification (v0.1.17):**
+- Launch from the Even Realities app stays on the Idle hub (no auto-jump to Compose)
+- Style selectable from Confirm, and from the Idle → Style menu
+- Style chosen on glasses shows up in dashboard Preferences, and vice versa
+- Voice-compose → real SMS round-trip (task #104)
+- Voice-anywhere intent classifier, now reachable from the hub (task #105)
+- Inbox + reply round-trip, now reachable from the hub (task #106)
+- Mic capture: v0.1.17 removed the silent canned-transcription fallback, so a
+  packed build now reports "no audio from the mic" instead of composing a
+  plausible message from nothing. If that error appears on hardware it is a
+  real mic-path finding, not a regression.
+
+**Verified in the simulator against the PACKED production bundle (v0.1.17):**
+Idle hub renders all 4 rows · compose → confirm → recipient picker → style
+submenu → applied variant · style write-through `professional → casual`
+confirmed against `/api/config` · Inbox renders on the chrome shape ·
+input-settle guard observed dropping a bleed-through tap · companion clean
+at a true 390 px width · 95/95 server tests · both typechecks clean.

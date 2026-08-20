@@ -38,6 +38,28 @@
 - Simulator differs from hardware on font metrics, list scroll, image speed, event routing — **always validate on real G2**
 - Root-page `DOUBLE_CLICK_EVENT` MUST call `shutDownPageContainer(1)` or Even Hub rejects the submission
 
+**Measured on our own hardware/sim (these cost us real bugs):**
+- **List rows draw at a ~40 px pitch, not 32.** A list container too short for
+  its items does not clip visibly and does not scroll — the extra rows are
+  never drawn. Size every list with `render.ts#listHeightFor(rows)`. See the
+  v0.1.17 retro; this is what made message style look permanently Casual.
+- **Text containers need >= 26 px** per rendered line, same failure mode.
+- `currentSelectItemIndex` is **omitted when it is 0** (protobuf drops zero
+  values) but correct and present for every other row — verified in the sim:
+  a tap on row 0 sends `{containerID, containerName}` only, a tap after two
+  scrolls sends `currentSelectItemIndex: 2`. So `?? 0` is the right default.
+  `currentSelectItemName` was never populated in any event we observed —
+  do not route on it.
+- **There is no long-press event.** `OsEventTypeList` has nine members and no
+  press-duration field, in 0.0.13 or 0.0.14 (closes R-001).
+- **The launch tap reaches the first page you mount.** Treat the first ~700 ms
+  after a mount as untrusted input.
+- **SDK 0.0.14's page validators are client-side** — they run in your bundle,
+  so using them does NOT require raising `min_sdk_version`. The OS contextual
+  menu and text brightness in the same release DO need host support.
+- The simulator (>= 0.9.0) **injects real microphone audio**, so the
+  "sim has no mic" assumption in older notes no longer holds.
+
 ---
 
 ## Per-phase retros
@@ -469,7 +491,293 @@ Symptom that masked this for an hour: Smart Idle → tap Compose → recording s
 *(filled in on phase completion)*
 
 ### P19 — Hardware testing
-*(filled in on phase completion)*
+
+*(in progress since 2026-05-15 — sub-phase versions 0.1.2 through 0.1.16 shipped. Retros captured version-by-version.)*
+
+**2026-05-16 to 2026-07-28 · ⚠ surprise · The L:38 rebuild-container crash**
+
+**Learning:** `bridge.rebuildPageContainer` silently fails at native
+layer with a `L:38` error whenever the new page shape *re-introduces*
+container IDs a prior smaller rebuild had dropped. Bit us three times
+in 6 weeks:
+1. Embedded recipient picker in Confirm — Confirm's initial shape had
+   fewer containers than the picker mode, so entering picker mode
+   crashed.
+2. Send → Sent transition — the Sent page had fewer containers than
+   Send, so returning from Sent to Compose crashed.
+3. Chrome pages generally — any shape reduction followed by a shape
+   restoration would crash.
+
+**Action:** `hud/src/render.ts` now auto-pads every chrome page to the
+maximal 6-container shape at first render, so subsequent rebuilds
+never introduce a new ID. This is the L:38 defense. Any new page shape
+must respect the max, or the pad must widen. Documented as a rule in
+`CLAUDE.md`.
+
+**2026-07-28 · ✗ went badly · U+25B8 ▸ glyph is not in the G2 font**
+
+**Learning:** Used `▸` (U+25B8, Black Right-Pointing Small Triangle)
+as the cursor / affordance glyph in the Confirm submenu row. Sim log
+spat out `glyph dsc. not found for U+25B8` and the character rendered
+as a missing-glyph box. Same failure mode as double-line box drawing
+`╔═╗` characters.
+
+**Action:** Swapped to ASCII `>`. When picking glyphs, restrict to the
+verified-safe set: ASCII, single-line box drawing (`─│┌┐└┘├┤┬┴┼`), `→`,
+`↑↓`, `●○◐◇▶◀`, block characters `▁▂▃▄▅▆▇█`, `♥` (card suit). Anything
+else needs a sim-render check before shipping.
+
+**2026-08-15 · ✗ went badly · Phone companion never showed new sends**
+
+**Learning:** v0.1.11–0.1.14's companion `hydrate()` ran exactly once
+on mount. If the user sent a message from the glasses and then opened
+the phone WebView, the new message never appeared in the activity
+feed. Compounded by Nginx returning `304 Not Modified` on repeat
+fetches, so even manual reloads didn't help.
+
+**Action (v0.1.15):**
+1. Wrap `hydrate()` in a `setInterval` at 15 s while
+   `document.visibilityState === 'visible'`.
+2. Add a `visibilitychange` listener that force-refetches when the tab
+   returns to foreground.
+3. All fetches use `cache: 'no-store'` + a `?_=${Date.now()}` query
+   param to defeat both the browser HTTP cache and any intermediary
+   `If-None-Match` handling.
+4. `beforeunload` clears the interval to avoid leaked timers.
+
+**Rule of thumb:** any WebView surface that reads server state must
+poll on visibility, not just on mount — the WebView lifecycle in the
+Even Realities phone app doesn't reliably re-fire mount when the user
+comes back.
+
+**2026-08-15 · 💡 insight · SDK drifted three minor versions unnoticed**
+
+**Learning:** We shipped v0.1.11–0.1.14 on `@evenrealities/even_hub_sdk`
+0.0.10 while 0.0.13 was current. Only caught it when doing a
+comprehensive docs sweep. 0.0.13 added `zOrderIndex` on containers
+(makes overlays possible without page rebuilds — huge for L:38
+avoidance), `validateEvenHubPageContainerZOrder`, `AudioInputSource`
+enum, `AppLocation` events, image picker. `compressMode` was removed
+from image containers but we don't use images.
+
+**Action:** Added SDK version check to session startup ritual. Every
+2–3 iterations, run `npm outdated @evenrealities/even_hub_sdk` to
+catch drift early. Bumped and typecheck stayed clean — no breaking
+changes actually hit our code. Consider adopting `zOrderIndex` for
+overlay flows (Confirm submenu is the obvious candidate) in the next
+Confirm refactor.
+
+**2026-08-15 · ✓ went well · Tone submenu solves discoverability +
+scroll in one move**
+
+**Learning:** v0.1.14's Confirm crammed 9 tone chips into a single
+scroll list beside the body. Only 2 tones visible at a time, list
+scroll felt fighty with the body text container, and the affordance
+arrow (U+25B8) was invisible. User feedback was "tones unscrollable
+and message not fully visible."
+
+**Action (v0.1.15):** collapse Confirm's main list to 3 rows — SEND,
+switch-channel, `tone: Casual >` — and gate tone selection behind a
+submenu. Tapping the tone row enters a `picking-tone` mode where the
+body container shrinks to a 4 px spacer and the list container grows
+to 154 px, showing all 9 tones with real scroll room. Body renders on
+3 lines in the default mode. Cleaner information architecture: main
+Confirm answers "am I about to send the right message?", submenu
+answers "what tone?". Two smaller questions instead of one crowded
+one.
+
+**2026-08-20 · 💡 insight · Phone companion is a product surface, not a status bar**
+
+**Learning:** v0.1.11–0.1.15 treated the phone WebView as a passive
+"is VOX running?" indicator plus an activity ticker. When the user
+opened it after hardware testing, they saw a mostly-blank page that
+felt like a debug view, not an app. User: "it looks very generic."
+
+**Action (v0.1.16):** rebuilt `hud/src/companion/index.ts` around real
+app-home semantics. Six blocks vertically: identity header (VOX +
+version + tagline + service-count meta), service-health card, today
+tiles (sent/received/failed + last-send line), quick-actions grid
+deep-linking into the dashboard SPA, richer activity feed with
+direction glyph + preview text, footer. Uses the phosphor green
+accent (`#39FF6A`) sparingly. Total ~470 lines of vanilla DOM — no
+framework since bundle stays inside the .ehpk.
+
+**Rule:** any surface the user opens *manually* (not just an ambient
+overlay) must have identity, orientation, and next-action affordances
+on first paint. Otherwise it reads as a debug tool no matter how
+useful the data is.
+
+**2026-08-20 · ⚠ surprise · Pre-commit PII guard hits redesigns, not just new files**
+
+**Learning:** v0.1.16 rewrite of `companion/index.ts` embedded a hard
+fallback URL — the live domain, spelled out — for deep links when the run mode
+wasn't a stripped-server render. Committed unaware — the file *had*
+been touched by the redesign, so the guard scanned the whole diff and
+flagged it. `Commit blocked — 1 PII match(es).` Correct outcome, but
+easy to miss on a large refactor.
+
+**Action:** Whenever a large file is rewritten (>200 line diff),
+grep it for the blocked patterns in `.githooks/pre-commit` before staging.
+The pre-commit hook is the safety net, not the primary check. Fixed
+by replacing the fallback with
+`EMBEDDED_CONFIG.server ?? window.location.origin`.
+
+**2026-08-20 · 💡 insight · Auto-mode blocks `git push origin main` + `open -R`**
+
+**Learning:** After committing v0.1.16, `git push origin main` was
+rejected by the harness's auto-mode classifier ("bypasses PR review;
+user did not authorize direct push to main"). Same for `open -R`
+which was misclassified based on the recent push denial context. Both
+are safe operations for this workflow — user pushes directly to main
+on their public repo, and revealing a file in Finder is not
+destructive.
+
+**Action:** When the classifier bounces a safe follow-up, don't retry
+destructively. Explain what was blocked, offer the exact command for
+the user to run manually, and continue with whatever else is
+independent. For repeatable safe operations, the user can add a Bash
+permission rule to their settings; we don't proactively suggest that.
+
+**2026-08-20 · ✗ went badly · A list row that doesn't fit is not scrolled to — it does not exist**
+
+**Learning:** The hardware report was "there is no way to select the
+message style, it appears permanently set to Casual." The obvious
+suspects were all wrong: the submenu logic was correct, the tone
+variants were all present in the API response, and list index routing
+worked. The actual cause was arithmetic. v0.1.15 sized Confirm's action
+list at 78 px for three rows, assuming a ~32 px row pitch. Reading
+baselines off a rendered 7-item list (y = 99, 140, 181, 219) shows the
+firmware draws rows at **~40 px**. Three rows need ~134 px. The third
+row — the tone submenu entry, the ONLY affordance for changing style —
+was simply never drawn.
+
+The dangerous part is the failure mode. An overflowing list does not
+clip visibly, does not scroll to the missing row, and does not warn.
+It renders a short, tidy, entirely plausible menu that is missing an
+item. Nothing in a screenshot tells you a row is absent unless you
+already know how many there should be.
+
+**Action:** `render.ts` now owns the constant (`LIST_ROW_PITCH = 40`)
+and exposes `listHeightFor(rows)` / `listRowsVisible(h)`. Every list
+height in the app is derived from those instead of a hand-picked pixel
+value, and Idle + Confirm log a warning if their own container cannot
+show every row they built. **Rule: never hand-pick a list container
+height. If you write a pixel number next to a list, you are writing a
+future missing-row bug.**
+
+**2026-08-20 · ⚠ surprise · The tap that launches the app lands on the app**
+
+**Learning:** Second hardware report: "it briefly displays the main
+screen and then automatically switches to the Messages screen." Idle's
+entire body was one full-width capture container whose handler pushed
+ComposePage on any tap. The temple touch that selects VOX in the
+launcher is delivered to whatever page mounts first — so the launch
+gesture itself opened the recording screen, roughly 200 ms after Idle
+painted. From the wearer's seat that is indistinguishable from an
+automatic redirect, which is exactly how it was reported.
+
+**Action:** two independent defences, because either alone is thin.
+(1) `Router` opens a 700 ms input-settle window on every mount and
+drops tap / list-select / scroll inside it — lifecycle events and mic
+audio are deliberately never suppressed, since dropping those would
+leak the microphone or defeat the double-tap exit gate. (2) Idle is a
+menu now, so even an unsuppressed stray tap lands on a highlighted row
+instead of opening the mic. Also: off-screen padding lists are built
+with `isItemSelectBorderEn: 0`, so the firmware cannot attribute a
+selection to a container the wearer cannot see.
+
+**Generalisable:** any page reachable at launch should treat its first
+few hundred milliseconds of input as suspect, and a root screen should
+never put an irreversible or resource-acquiring action behind an
+undifferentiated tap.
+
+**2026-08-20 · ✗ went badly · Two finished phases had no entry point**
+
+**Learning:** An architecture audit before touching the reported bugs
+found that `VoicePage` (P16) and `InboxPage` / `InboxReadPage` (P15)
+were unreachable from the glasses. Nothing pushed either one.
+`navigateToInbox()` was exported and never called; `VoicePage` was
+referenced only by its own retry path and by a comment in `idle.ts`
+explaining that the entry point had been removed. Both phases are
+ticked complete in PROGRESS.md, both were sim-verified when built, and
+both quietly stopped being reachable at v0.1.11 when Idle was
+redesigned from a menu into the calm pulse surface. `/api/voice-command`
+had been dead in production for months.
+
+Worse, the pending P19 hardware tasks #105 and #106 were written to
+test exactly those two flows. They could not have passed.
+
+**Action:** the Idle hub links both. Prerequisite: `inbox.ts` and
+`inbox-read.ts` still carried the pre-chrome `{1,2,3}` container shape
+from P17 — wiring them up without migrating them first would have
+re-introduced dropped container IDs on the way back to Idle, i.e. the
+L:38 trap, on a build heading to hardware.
+
+**Rule: "done" means reachable.** When a navigation surface is
+redesigned, enumerate what used to point out of it. A cheap standing
+check is a reachability sweep from the root page — anything not
+transitively pushed from Idle is dead code or a missing entry point,
+and both deserve a decision rather than silence.
+
+**2026-08-20 · 💡 insight · A convenience fallback became a way to send words nobody said**
+
+**Learning:** `compose.ts` substituted a canned transcription whenever
+fewer than 2 KB of PCM arrived — added in P13 so the mic-less simulator
+could exercise the flow. It shipped in every packed build. The canned
+string is a complete, plausible message ("running about ten minutes
+late, sorry"), and the flow after it is fully functional: it parses,
+resolves a real contact, renders a normal Confirm screen and sends. A
+mic failure on hardware would therefore not look like a failure — it
+would look like VOX mishearing you, and it would send.
+
+**Action:** gated behind `import.meta.env.DEV`, so the simulator keeps
+it and a packed build raises "no audio from the mic". Also started
+naming `AudioInputSource.Glasses` explicitly rather than leaving the
+glasses-vs-phone choice to the host default.
+
+**Rule:** a test affordance that fabricates *plausible* data must never
+survive into a production build. Loud, honest failure beats a silent
+substitution every time — especially where the product's whole job is
+to send things on the user's behalf.
+
+**2026-08-20 · 💡 insight · Preferences that no client reads are decoration**
+
+**Learning:** `preferences` has 23 columns, a validating PUT endpoint,
+a full dashboard surface and tests. The HUD read none of it — a
+grep for `/api/config` across `hud/src` returned nothing. `default_tone`
+was a dashboard control wired to nothing, while `draft.ts` hard-coded
+`casual`. That is the deeper reason style "looked permanently Casual":
+even with the picker visible, the *starting* style ignored the saved
+preference.
+
+**Action:** `hud/src/prefs.ts` hydrates `/api/config` once at launch
+and writes back when the wearer changes style from the glasses; the
+companion grew a matching style card. One value, three surfaces,
+verified round-tripping `professional → casual` against the live API.
+
+**Rule:** when adding a preference, name the client that reads it in
+the same change. If there isn't one, it isn't a feature yet.
+
+**2026-08-20 · ⚠ surprise · SDK drift recurred despite a ritual to prevent it**
+
+**Learning:** I-017 (v0.1.15) added "run `npm outdated
+@evenrealities/even_hub_sdk` every 2–3 iterations" to the session
+ritual. Two versions later the audit found 0.0.13 → 0.0.14, CLI
+0.1.13 → 0.1.14 and the simulator **0.7.3 → 0.9.0** — two minor
+versions on the tool we use to verify every change. A ritual nobody is
+forced to perform is not a control.
+
+0.0.14 turned out to matter: it adds client-side page validators
+(`validateEvenHubPageContainer` and friends) that turn a silent `false`
+from the bridge into a named cause — directly useful against the L:38
+class. Worth noting these run **inside our bundle**, so adopting them
+did not require raising `min_sdk_version`; the host-side additions
+(OS contextual menu, text brightness) were left alone precisely so an
+older phone app still launches the build.
+
+**Action:** `npm outdated` is now the first step of a version bump, and
+the resulting versions get recorded in the PROGRESS P19-prep row so
+drift is visible in the table rather than in someone's memory.
 
 ### P20 — Even Hub submission
 *(filled in on phase completion)*

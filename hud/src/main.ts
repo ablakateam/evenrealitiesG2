@@ -10,6 +10,8 @@ import {
 } from './kvs.js';
 import { hudApi } from './api.js';
 import { renderCompanion } from './companion/index.js';
+import { hydratePrefs } from './prefs.js';
+import { APP_VERSION } from './version.js';
 
 /**
  * VOX runs one WebView that drives TWO independent surfaces:
@@ -30,7 +32,7 @@ async function sendTelemetry(payload: { message: string; stack: string | null; p
   try {
     await hudApi('/api/telemetry/error', {
       method: 'POST',
-      body: { ...payload, app_version: '0.1.0' },
+      body: { ...payload, app_version: APP_VERSION },
     });
   } catch {
     // Best-effort: don't surface a telemetry failure to the user.
@@ -144,6 +146,12 @@ async function main(): Promise<void> {
   // the HUD can't talk to the server yet.
   const paired = (await getPairing()) !== null;
   const seenCue = await hasSeenVoiceCue();
+
+  // Pull preferences before the first paint so the Idle "Style:" row and the
+  // starting tone of a new message reflect what the dashboard has saved,
+  // rather than flashing a default and correcting itself a moment later.
+  if (paired) await hydratePrefs();
+
   await router.go(paired && !seenCue ? VoiceCuePage : IdlePage);
 }
 

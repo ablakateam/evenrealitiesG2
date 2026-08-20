@@ -16,9 +16,8 @@
  */
 
 import { EMBEDDED_CONFIG } from '../embedded-config.js';
+import { APP_VERSION, SDK_VERSION } from '../version.js';
 
-const APP_VERSION = '0.1.16';
-const SDK_VERSION = '0.0.13';
 
 type HistoryItem = {
   id: number;
@@ -40,21 +39,44 @@ type IdleStatus = {
 
 type IntegrationView = {
   provider: 'twilio' | 'openai' | 'anthropic' | 'openrouter' | 'ollama-cloud';
-  status: 'ok' | 'error' | 'unconfigured' | 'untested';
+  status: 'configured' | 'unconfigured' | 'error';
   configured: boolean;
   metadata: Record<string, unknown>;
 };
+
+type Tone = 'casual' | 'professional' | 'friendly' | 'formal' | 'sarcastic' | 'grammar' | 'original';
+
+const TONES: Tone[] = [
+  'casual',
+  'professional',
+  'friendly',
+  'formal',
+  'sarcastic',
+  'grammar',
+  'original',
+];
 
 /* --- root shell + boot -------------------------------------------------- */
 
 export function renderCompanion(root: HTMLElement): void {
   root.innerHTML = '';
+  // Set `display` explicitly. index.html styles #app as a centred flexbox
+  // for the static placeholder, and that rule lives in a stylesheet, so
+  // assigning cssText here does NOT clear it — the app root would otherwise
+  // inherit a layout mode meant for a single centred line of text, leaving
+  // the wrapper as a row flex item with the default `min-width: auto`.
+  // Verified rendering clean at a true 390 px width either way; this is
+  // belt-and-braces so a longer activity row can't find the edge case.
   root.style.cssText = `
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
     min-height: 100%;
     background: #1a1a1a;
     color: #E5E5E5;
     font: 15px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding: 0;
@@ -67,13 +89,20 @@ export function renderCompanion(root: HTMLElement): void {
   }
 
   const wrap = el('div', {
-    style: `padding: 20px 16px 40px; max-width: 520px; margin: 0 auto;`,
+    style: `
+      padding: 20px 16px 40px;
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto;
+      box-sizing: border-box;
+    `,
   });
   root.appendChild(wrap);
 
   wrap.appendChild(headerBlock(server));
   wrap.appendChild(statusBlock());
   wrap.appendChild(todayBlock());
+  wrap.appendChild(styleBlock(server, secret));
   wrap.appendChild(quickActionsBlock(server));
   wrap.appendChild(activityBlock());
   wrap.appendChild(footerBlock(server));
@@ -100,12 +129,15 @@ async function hydrate(server: string, secret: string): Promise<void> {
   const bust = Date.now();
 
   try {
-    const [statusRes, historyRes, integrationsRes] = await Promise.all([
+    const [statusRes, historyRes, integrationsRes, configRes] = await Promise.all([
       fetch(`${server}/api/idle-suggestions?_=${bust}`, fetchOpts).then((r) => r.json()),
       fetch(`${server}/api/history?limit=10&_=${bust}`, fetchOpts).then((r) => r.json()),
       fetch(`${server}/api/integrations?_=${bust}`, fetchOpts)
         .then((r) => r.json())
         .catch(() => ({ integrations: [] })),
+      fetch(`${server}/api/config?_=${bust}`, fetchOpts)
+        .then((r) => r.json())
+        .catch(() => ({ preferences: {} })),
     ]);
     const status: IdleStatus = statusRes.status ?? {
       twilio: false,
@@ -124,6 +156,7 @@ async function hydrate(server: string, secret: string): Promise<void> {
     paintHeader(status, integrations);
     paintStatus(status, integrations);
     paintToday(status, lastSent, todayReceived);
+    paintStyle((configRes?.preferences?.default_tone as Tone) ?? 'casual');
     paintQuickActions(status);
     paintActivity(history);
   } catch (err) {
@@ -340,6 +373,102 @@ function statTile(value: number, label: string, warn = false): HTMLElement {
   return tile;
 }
 
+/* --- message style ------------------------------------------------------ */
+
+/**
+ * Message style picker.
+ *
+ * This is the same `default_tone` preference the glasses Style menu writes
+ * and that a new message starts in. Surfacing it here — rather than only
+ * three taps deep in the dashboard SPA — is what makes "which style am I
+ * sending in?" answerable from whichever surface the user happens to have
+ * open, which is what the hardware feedback asked for.
+ */
+function styleBlock(server: string, secret: string): HTMLElement {
+  const wrap = el('section', { style: `margin-top: 22px;` });
+  wrap.appendChild(sectionLabel('message style'));
+
+  const card = el('div', {
+    id: 'vox-style-card',
+    style: `
+      background: #262626; border: 1px solid #333;
+      border-radius: 10px; padding: 14px;
+    `,
+  });
+
+  const current = el('div', {
+    id: 'vox-style-current',
+    style: `font-size: 15px; font-weight: 600; margin-bottom: 4px;`,
+    text: 'loading…',
+  });
+  card.appendChild(current);
+  card.appendChild(
+    el('div', {
+      style: `font-size: 12px; opacity: 0.55; margin-bottom: 12px;`,
+      text: 'used on the glasses for every new message',
+    }),
+  );
+
+  const row = el('div', {
+    id: 'vox-style-chips',
+    style: `display: flex; flex-wrap: wrap; gap: 6px;`,
+  });
+  for (const tone of TONES) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.dataset.tone = tone;
+    chip.textContent = tone;
+    chip.style.cssText = chipStyle(false);
+    chip.addEventListener('click', () => {
+      void applyStyle(server, secret, tone);
+    });
+    row.appendChild(chip);
+  }
+  card.appendChild(row);
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function chipStyle(active: boolean): string {
+  return `
+    padding: 7px 12px; border-radius: 999px; cursor: pointer;
+    font: inherit; font-size: 13px; text-transform: capitalize;
+    background: ${active ? '#39FF6A' : '#1f1f1f'};
+    color: ${active ? '#101010' : '#E5E5E5'};
+    border: 1px solid ${active ? '#39FF6A' : '#3a3a3a'};
+    font-weight: ${active ? '600' : '400'};
+  `;
+}
+
+function paintStyle(tone: Tone): void {
+  const current = document.getElementById('vox-style-current');
+  if (current) current.textContent = tone.charAt(0).toUpperCase() + tone.slice(1);
+  const chips = document.getElementById('vox-style-chips');
+  if (!chips) return;
+  for (const node of Array.from(chips.children)) {
+    const btn = node as HTMLButtonElement;
+    btn.style.cssText = chipStyle(btn.dataset.tone === tone);
+  }
+}
+
+async function applyStyle(server: string, secret: string, tone: Tone): Promise<void> {
+  // Optimistic paint so the tap feels instant; hydrate() re-asserts the
+  // server's value on the next poll if the write lost a race.
+  paintStyle(tone);
+  try {
+    await fetch(`${server}/api/config`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ default_tone: tone }),
+    });
+  } catch (err) {
+    console.warn('[companion] style save failed:', err);
+    const current = document.getElementById('vox-style-current');
+    if (current) current.textContent = "couldn't save — check connection";
+  }
+}
+
 /* --- quick actions ------------------------------------------------------ */
 
 function quickActionsBlock(server: string): HTMLElement {
@@ -449,7 +578,7 @@ function activityRow(item: HistoryItem): HTMLElement {
   row.appendChild(head);
   row.appendChild(
     el('div', {
-      style: `margin-top: 6px; font-size: 14px; opacity: 0.88; word-wrap: break-word;`,
+      style: `margin-top: 6px; font-size: 14px; opacity: 0.88; overflow-wrap: anywhere;`,
       text: body,
     }),
   );

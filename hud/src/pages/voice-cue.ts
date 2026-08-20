@@ -22,9 +22,9 @@ const CUE_BODY = [
   '   Hi. I help you message',
   '   without taking out your phone.',
   '',
-  '   Tap to speak. Try:',
-  '     "send dan running late"',
-  '     "tell mom call me back"',
+  '   Scroll the menu, tap to pick.',
+  '   Start with "Speak a message":',
+  '     "text dan running late"',
 ].join('\n');
 
 export const VoiceCuePage: Page = {
@@ -42,7 +42,7 @@ export const VoiceCuePage: Page = {
           border: 0,
           padding: 4,
           capture: false,
-          content: center('first time?'),
+          content: center('welcome to VOX'),
         },
         {
           id: BODY_ID,
@@ -56,7 +56,7 @@ export const VoiceCuePage: Page = {
           content: CUE_BODY,
         },
       ],
-      chrome: { hint: 'tap to get started' },
+      chrome: { hint: 'tap to open the menu' },
     });
   },
 
