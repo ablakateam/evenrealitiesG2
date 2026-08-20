@@ -1,22 +1,24 @@
 /**
- * Phone WebView companion UI.
+ * Phone WebView companion — the "home page" you see when you tap VOX
+ * from the Even Realities phone app.
  *
- * Loaded when the Even Hub host opens VOX on the phone instead of the
- * glasses (detected in main.ts by the absence of an evenAppBridge after
- * a short timeout). Pure DOM + fetch — no framework, no router; this is
- * a lightweight read-mostly status surface, not a second product.
+ * Design goal: this is the first thing the user sees on the phone side.
+ * It should read as a REAL app home — identity + service health at a
+ * glance, today's counts, quick actions that deep-link to the dashboard,
+ * and a live activity feed. Not a status ticker.
  *
- * v1 surfaces:
- *   - top banner: server reachable, today's send count, last sent
- *   - recent activity feed: last 10 outbound + inbound items, tappable
- *   - footer: link out to the VOX server domain for heavy config
+ * Pure vanilla DOM + fetch — no framework, no router. Keeps the bundle
+ * small (~40 KB) since this is what loads inside the WebView every time
+ * the phone user opens VOX.
  *
- * Auth: the same VITE_VOX_SECRET inlined into the .ehpk by pack.sh.
- * Network: HTTPS fetch directly to the VOX server (whitelisted via
- * app.json so the WebView's CORS sandbox lets the call through).
+ * Deep links jump to the full dashboard at <server>/<section> where the
+ * SPA (web/) picks up.
  */
 
 import { EMBEDDED_CONFIG } from '../embedded-config.js';
+
+const APP_VERSION = '0.1.16';
+const SDK_VERSION = '0.0.13';
 
 type HistoryItem = {
   id: number;
@@ -36,16 +38,26 @@ type IdleStatus = {
   unread: number;
 };
 
+type IntegrationView = {
+  provider: 'twilio' | 'openai' | 'anthropic' | 'openrouter' | 'ollama-cloud';
+  status: 'ok' | 'error' | 'unconfigured' | 'untested';
+  configured: boolean;
+  metadata: Record<string, unknown>;
+};
+
+/* --- root shell + boot -------------------------------------------------- */
+
 export function renderCompanion(root: HTMLElement): void {
   root.innerHTML = '';
   root.style.cssText = `
-    height: 100%;
-    background: #232323;
+    min-height: 100%;
+    background: #1a1a1a;
     color: #E5E5E5;
-    font: 15px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
     overflow-y: auto;
-    padding: 0;
     -webkit-overflow-scrolling: touch;
+    padding: 0;
   `;
 
   const { server, secret } = EMBEDDED_CONFIG;
@@ -54,194 +66,514 @@ export function renderCompanion(root: HTMLElement): void {
     return;
   }
 
-  const wrap = document.createElement('div');
-  wrap.style.cssText = `padding: 16px; max-width: 480px; margin: 0 auto;`;
+  const wrap = el('div', {
+    style: `padding: 20px 16px 40px; max-width: 520px; margin: 0 auto;`,
+  });
   root.appendChild(wrap);
 
-  const titleBar = el('div', { style: `
-    display: flex; align-items: baseline; justify-content: space-between;
-    margin-bottom: 12px;
-  ` });
-  titleBar.appendChild(el('h1', { style: `
-    margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.3px;
-  `, text: 'VOX' }));
-  titleBar.appendChild(el('span', { style: `
-    font-size: 12px; opacity: 0.6;
-  `, text: 'phone companion' }));
-  wrap.appendChild(titleBar);
+  wrap.appendChild(headerBlock(server));
+  wrap.appendChild(statusBlock());
+  wrap.appendChild(todayBlock());
+  wrap.appendChild(quickActionsBlock(server));
+  wrap.appendChild(activityBlock());
+  wrap.appendChild(footerBlock(server));
 
-  const banner = el('div', { id: 'vox-banner', style: bannerStyle('loading') });
-  banner.textContent = 'loading...';
-  wrap.appendChild(banner);
-
-  const activitySection = el('div', { style: `margin-top: 20px;` });
-  activitySection.appendChild(el('div', { style: `
-    font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px;
-    opacity: 0.55; margin-bottom: 8px;
-  `, text: 'recent activity' }));
-  const activityList = el('div', { id: 'vox-activity' });
-  activitySection.appendChild(activityList);
-  wrap.appendChild(activitySection);
-
-  const footer = el('div', { style: `
-    margin-top: 24px; padding-top: 16px;
-    border-top: 1px solid #3a3a3a;
-    font-size: 13px; opacity: 0.7; text-align: center;
-  ` });
-  footer.appendChild(el('div', { text: 'For full settings, contacts, and integrations:' }));
-  footer.appendChild(el('div', { style: 'margin-top: 4px;',
-    text: server.replace(/^https?:\/\//, '') }));
-  wrap.appendChild(footer);
-
-  // Initial hydrate + keep it fresh. The user reported that sends made
-  // during a phone-app session never appeared in the activity feed — the
-  // companion was drawing a snapshot from mount time and never refreshing.
-  // Now we poll every 15 s while the tab is visible, and force-refresh
-  // whenever the tab becomes visible again (returning from another app).
   void hydrate(server, secret);
-  let pollTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
+
+  // Poll every 15s while visible; force-refresh on tab return so a message
+  // sent from the glasses lands in the activity feed within moments of the
+  // user checking the phone.
+  const pollTimer = setInterval(() => {
     if (document.visibilityState === 'visible') void hydrate(server, secret);
   }, 15000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void hydrate(server, secret);
   });
-  // Best-effort cleanup if the page ever unmounts (WebView reload).
-  window.addEventListener('beforeunload', () => {
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = null;
-  });
+  window.addEventListener('beforeunload', () => clearInterval(pollTimer));
 }
 
+/* --- data fetch --------------------------------------------------------- */
+
 async function hydrate(server: string, secret: string): Promise<void> {
-  const banner = document.getElementById('vox-banner');
-  const activity = document.getElementById('vox-activity');
-  if (!banner || !activity) return;
-
   const auth = { Authorization: `Bearer ${secret}` };
-  let status: IdleStatus | null = null;
-  let history: HistoryItem[] = [];
-  let lastSent: HistoryItem | null = null;
-
-  // cache: 'no-store' + a cache-buster query param — the phone WebView's
-  // HTTP cache was returning 304 Not Modified even after we sent new
-  // messages, so the poll ran but rendered stale data. Force network.
-  const bust = Date.now();
   const fetchOpts: RequestInit = { headers: auth, cache: 'no-store' };
+  const bust = Date.now();
+
   try {
-    const [s, h] = await Promise.all([
+    const [statusRes, historyRes, integrationsRes] = await Promise.all([
       fetch(`${server}/api/idle-suggestions?_=${bust}`, fetchOpts).then((r) => r.json()),
       fetch(`${server}/api/history?limit=10&_=${bust}`, fetchOpts).then((r) => r.json()),
+      fetch(`${server}/api/integrations?_=${bust}`, fetchOpts)
+        .then((r) => r.json())
+        .catch(() => ({ integrations: [] })),
     ]);
-    status = s.status;
-    history = h.items ?? [];
-    lastSent = history.find((it) => it.direction === 'out' && it.status === 'sent') ?? null;
+    const status: IdleStatus = statusRes.status ?? {
+      twilio: false,
+      email: false,
+      today_sent: 0,
+      today_failed: 0,
+      unread: 0,
+    };
+    const history: HistoryItem[] = historyRes.items ?? [];
+    const integrations: IntegrationView[] = integrationsRes.integrations ?? [];
+    const lastSent = history.find((it) => it.direction === 'out') ?? null;
+    const todayReceived = history.filter(
+      (it) => it.direction === 'in' && sameDay(it.created_at),
+    ).length;
+
+    paintHeader(status, integrations);
+    paintStatus(status, integrations);
+    paintToday(status, lastSent, todayReceived);
+    paintQuickActions(status);
+    paintActivity(history);
   } catch (err) {
-    banner.style.cssText = bannerStyle('error');
-    banner.textContent = `couldn't reach server (${err instanceof Error ? err.message : 'network'})`;
-    return;
+    const banner = document.getElementById('vox-status-card');
+    if (banner) {
+      banner.style.cssText = cardStyle('error');
+      banner.innerHTML = '';
+      banner.appendChild(
+        el('div', {
+          style: `font-weight: 600;`,
+          text: 'Server unreachable',
+        }),
+      );
+      banner.appendChild(
+        el('div', {
+          style: `font-size: 13px; opacity: 0.75; margin-top: 4px;`,
+          text: err instanceof Error ? err.message : 'network error',
+        }),
+      );
+    }
   }
+}
 
-  // --- Banner ---------------------------------------------------------
-  banner.style.cssText = bannerStyle('ok');
-  banner.innerHTML = '';
-  const row1 = el('div', { style: `display: flex; justify-content: space-between; align-items: center;` });
-  const ok = status?.twilio && status?.email;
-  row1.appendChild(el('span', { style: `font-weight: 600; font-size: 16px;`,
-    text: ok ? 'connected' : 'partial' }));
-  row1.appendChild(el('span', { style: `font-size: 13px; opacity: 0.75;`,
-    text: `${status?.today_sent ?? 0} sent · ${status?.today_failed ?? 0} failed · ${status?.unread ?? 0} unread today` }));
-  banner.appendChild(row1);
-  if (lastSent) {
-    const ago = formatAgo(Date.now() - new Date(lastSent.created_at).getTime());
-    const method = lastSent.channel === 'sms' ? 'SMS' : 'Email';
-    banner.appendChild(el('div', { style: `margin-top: 6px; font-size: 13px; opacity: 0.7;`,
-      text: `last: ${method} to ${lastSent.contact_name ?? 'unknown'} — ${ago}` }));
+/* --- header block ------------------------------------------------------- */
+
+function headerBlock(_server: string): HTMLElement {
+  const wrap = el('header', {
+    style: `text-align: center; margin-bottom: 24px; padding-top: 8px;`,
+  });
+  wrap.appendChild(
+    el('div', {
+      style: `
+        font-size: 32px; font-weight: 700; letter-spacing: -0.5px;
+        color: #E5E5E5;
+      `,
+      text: 'VOX',
+    }),
+  );
+  wrap.appendChild(
+    el('div', {
+      style: `
+        font-size: 13px; opacity: 0.55; margin-top: 4px;
+      `,
+      text: 'voice-to-message for your G2',
+    }),
+  );
+  wrap.appendChild(
+    el('div', {
+      id: 'vox-header-meta',
+      style: `
+        font-size: 11px; opacity: 0.4; margin-top: 8px;
+        font-variant-numeric: tabular-nums;
+      `,
+      text: `v${APP_VERSION} · loading…`,
+    }),
+  );
+  return wrap;
+}
+
+function paintHeader(_status: IdleStatus, integrations: IntegrationView[]): void {
+  const meta = document.getElementById('vox-header-meta');
+  if (!meta) return;
+  const connected = integrations.filter((i) => i.configured && i.status !== 'error').length;
+  meta.textContent = `v${APP_VERSION} · SDK ${SDK_VERSION} · ${connected} service${connected === 1 ? '' : 's'} connected`;
+}
+
+/* --- status card -------------------------------------------------------- */
+
+function statusBlock(): HTMLElement {
+  const card = el('section', { id: 'vox-status-card', style: cardStyle('loading') });
+  card.textContent = 'checking services…';
+  return card;
+}
+
+function paintStatus(status: IdleStatus, integrations: IntegrationView[]): void {
+  const card = document.getElementById('vox-status-card');
+  if (!card) return;
+
+  // Services worth surfacing on the home card. LLM providers are collapsed
+  // into a single "AI" indicator (green if any one is configured + ok).
+  const twilio = pickIntegration(integrations, 'twilio');
+  const llmProviders = ['anthropic', 'openai', 'openrouter', 'ollama-cloud'] as const;
+  const aiReady = llmProviders.some((p) => {
+    const i = pickIntegration(integrations, p);
+    return i?.configured && i.status !== 'error';
+  });
+
+  const checks: Array<{ label: string; ok: boolean }> = [
+    { label: 'Twilio', ok: Boolean(twilio?.configured && status.twilio) },
+    { label: 'Email', ok: Boolean(status.email) },
+    { label: 'AI', ok: aiReady },
+  ];
+  const allOk = checks.every((c) => c.ok);
+  const anyOk = checks.some((c) => c.ok);
+  const state: CardState = allOk ? 'ok' : anyOk ? 'partial' : 'error';
+
+  card.style.cssText = cardStyle(state);
+  card.innerHTML = '';
+
+  const top = el('div', {
+    style: `display: flex; justify-content: space-between; align-items: baseline;`,
+  });
+  top.appendChild(
+    el('div', {
+      style: `font-weight: 600; font-size: 17px;`,
+      text: state === 'ok' ? 'all services ready' : state === 'partial' ? 'partially connected' : 'needs setup',
+    }),
+  );
+  top.appendChild(
+    el('a', {
+      href: `${EMBEDDED_CONFIG.server ?? window.location.origin}/integrations`,
+      style: `font-size: 12px; opacity: 0.6; color: inherit; text-decoration: none;`,
+      text: 'manage →',
+    }),
+  );
+  card.appendChild(top);
+
+  const row = el('div', {
+    style: `display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap;`,
+  });
+  for (const c of checks) {
+    const chip = el('div', {
+      style: `
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 14px; opacity: ${c.ok ? 1 : 0.5};
+      `,
+    });
+    chip.appendChild(
+      el('span', {
+        style: `
+          width: 8px; height: 8px; border-radius: 50%;
+          background: ${c.ok ? '#39FF6A' : '#666'};
+          display: inline-block;
+        `,
+      }),
+    );
+    chip.appendChild(el('span', { text: c.label }));
+    row.appendChild(chip);
   }
+  card.appendChild(row);
+}
 
-  // --- Activity feed --------------------------------------------------
-  activity.innerHTML = '';
+/* --- today block -------------------------------------------------------- */
+
+function todayBlock(): HTMLElement {
+  const wrap = el('section', { style: `margin-top: 22px;` });
+  wrap.appendChild(sectionLabel('today'));
+  const grid = el('div', {
+    id: 'vox-today-grid',
+    style: `
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px; margin-bottom: 10px;
+    `,
+  });
+  wrap.appendChild(grid);
+  const line = el('div', {
+    id: 'vox-today-last',
+    style: `font-size: 13px; opacity: 0.75; margin-top: 4px;`,
+    text: '',
+  });
+  wrap.appendChild(line);
+  return wrap;
+}
+
+function paintToday(
+  status: IdleStatus,
+  lastSent: HistoryItem | null,
+  received: number,
+): void {
+  const grid = document.getElementById('vox-today-grid');
+  if (grid) {
+    grid.innerHTML = '';
+    grid.appendChild(statTile(status.today_sent, 'sent'));
+    grid.appendChild(statTile(received, 'received'));
+    grid.appendChild(statTile(status.today_failed, 'failed', status.today_failed > 0));
+  }
+  const line = document.getElementById('vox-today-last');
+  if (line) {
+    line.innerHTML = '';
+    if (lastSent) {
+      const method = lastSent.channel === 'sms' ? 'SMS' : 'Email';
+      const ago = formatAgo(Date.now() - new Date(lastSent.created_at).getTime());
+      line.textContent = `→ last: ${method} to ${lastSent.contact_name ?? 'unknown'} · ${ago}`;
+    }
+  }
+}
+
+function statTile(value: number, label: string, warn = false): HTMLElement {
+  const tile = el('div', {
+    style: `
+      background: #262626;
+      border: 1px solid ${warn ? '#5a3030' : '#333'};
+      border-radius: 10px;
+      padding: 14px 8px;
+      text-align: center;
+    `,
+  });
+  tile.appendChild(
+    el('div', {
+      style: `
+        font-size: 26px; font-weight: 700;
+        color: ${warn ? '#ff8c8c' : '#E5E5E5'};
+        font-variant-numeric: tabular-nums;
+      `,
+      text: String(value),
+    }),
+  );
+  tile.appendChild(
+    el('div', {
+      style: `font-size: 11px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;`,
+      text: label,
+    }),
+  );
+  return tile;
+}
+
+/* --- quick actions ------------------------------------------------------ */
+
+function quickActionsBlock(server: string): HTMLElement {
+  const wrap = el('section', { style: `margin-top: 22px;` });
+  wrap.appendChild(sectionLabel('quick actions'));
+  const grid = el('div', {
+    id: 'vox-actions-grid',
+    style: `
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    `,
+  });
+  wrap.appendChild(grid);
+  // Painted lazily so we can annotate inbox with unread count once we have it.
+  grid.appendChild(actionCard(`${server}/inbox`, 'Inbox', 'vox-action-inbox'));
+  grid.appendChild(actionCard(`${server}/contacts`, 'Contacts', 'vox-action-contacts'));
+  grid.appendChild(actionCard(`${server}/activity`, 'Activity', 'vox-action-activity'));
+  grid.appendChild(actionCard(`${server}/preferences`, 'Preferences', 'vox-action-prefs'));
+  return wrap;
+}
+
+function paintQuickActions(status: IdleStatus): void {
+  const inbox = document.getElementById('vox-action-inbox-badge');
+  if (inbox) {
+    inbox.textContent = status.unread > 0 ? `${status.unread} unread` : 'no new';
+    inbox.style.color = status.unread > 0 ? '#39FF6A' : '';
+    inbox.style.opacity = status.unread > 0 ? '1' : '0.5';
+  }
+}
+
+function actionCard(href: string, label: string, id: string): HTMLElement {
+  const link = document.createElement('a');
+  link.href = href;
+  link.style.cssText = `
+    display: block; padding: 14px;
+    background: #262626; border: 1px solid #333;
+    border-radius: 10px; text-decoration: none;
+    color: inherit;
+  `;
+  link.appendChild(
+    el('div', {
+      style: `font-size: 15px; font-weight: 600;`,
+      text: label,
+    }),
+  );
+  link.appendChild(
+    el('div', {
+      id: `${id}-badge`,
+      style: `font-size: 12px; opacity: 0.5; margin-top: 4px;`,
+      text: 'open →',
+    }),
+  );
+  return link;
+}
+
+/* --- activity feed ------------------------------------------------------ */
+
+function activityBlock(): HTMLElement {
+  const wrap = el('section', { style: `margin-top: 24px;` });
+  wrap.appendChild(sectionLabel('recent activity'));
+  const feed = el('div', { id: 'vox-activity', style: `display: flex; flex-direction: column; gap: 8px;` });
+  wrap.appendChild(feed);
+  return wrap;
+}
+
+function paintActivity(history: HistoryItem[]): void {
+  const feed = document.getElementById('vox-activity');
+  if (!feed) return;
+  feed.innerHTML = '';
   if (history.length === 0) {
-    activity.appendChild(el('div', { style: `padding: 16px; opacity: 0.6; text-align: center;`,
-      text: 'no activity yet — send your first message from the glasses.' }));
+    feed.appendChild(
+      el('div', {
+        style: `
+          padding: 24px 16px; opacity: 0.5; text-align: center;
+          background: #262626; border: 1px dashed #333; border-radius: 10px;
+        `,
+        text: 'no messages yet — send your first from the glasses',
+      }),
+    );
     return;
   }
-  for (const item of history) {
-    activity.appendChild(activityRow(item));
-  }
+  for (const item of history) feed.appendChild(activityRow(item));
 }
 
 function activityRow(item: HistoryItem): HTMLElement {
   const direction = item.direction === 'out' ? '→' : '←';
   const channel = item.channel === 'sms' ? 'SMS' : 'EMAIL';
   const name = item.contact_name ?? '(unknown)';
-  const body = item.body.length > 80 ? item.body.slice(0, 79) + '…' : item.body;
+  const body = item.body.length > 90 ? item.body.slice(0, 89) + '…' : item.body;
   const ago = formatAgo(Date.now() - new Date(item.created_at).getTime());
-  const status = item.status;
 
-  const row = el('div', { style: `
-    padding: 10px 12px;
-    border: 1px solid #3a3a3a;
-    border-radius: 8px;
-    margin-bottom: 8px;
-    background: #2a2a2a;
-  ` });
-
-  const head = el('div', { style: `
-    display: flex; justify-content: space-between; align-items: baseline;
-    font-size: 13px;
-  ` });
-  head.appendChild(el('span', { style: `font-weight: 600;`,
-    text: `${direction} ${name}` }));
-  head.appendChild(el('span', { style: `opacity: 0.55; font-size: 11px;`,
-    text: `${channel} · ${ago}` }));
+  const row = el('div', {
+    style: `
+      padding: 12px 14px;
+      border: 1px solid #333;
+      border-radius: 10px;
+      background: #262626;
+    `,
+  });
+  const head = el('div', {
+    style: `display: flex; justify-content: space-between; align-items: baseline; font-size: 13px;`,
+  });
+  head.appendChild(el('span', { style: `font-weight: 600;`, text: `${direction} ${name}` }));
+  head.appendChild(
+    el('span', { style: `opacity: 0.55; font-size: 11px;`, text: `${channel} · ${ago}` }),
+  );
   row.appendChild(head);
-
-  row.appendChild(el('div', { style: `
-    margin-top: 6px; font-size: 14px; opacity: 0.88; word-wrap: break-word;
-  `, text: body }));
-
-  if (status !== 'sent' && status !== 'received') {
-    row.appendChild(el('div', { style: `
-      margin-top: 4px; font-size: 11px; opacity: 0.55; font-style: italic;
-    `, text: status }));
+  row.appendChild(
+    el('div', {
+      style: `margin-top: 6px; font-size: 14px; opacity: 0.88; word-wrap: break-word;`,
+      text: body,
+    }),
+  );
+  if (item.status !== 'sent' && item.status !== 'received' && item.status !== 'delivered') {
+    row.appendChild(
+      el('div', {
+        style: `margin-top: 4px; font-size: 11px; opacity: 0.55; font-style: italic;`,
+        text: item.status,
+      }),
+    );
   }
   return row;
 }
 
+/* --- footer ------------------------------------------------------------- */
+
+function footerBlock(server: string): HTMLElement {
+  const wrap = el('footer', {
+    style: `
+      margin-top: 32px; padding-top: 20px; border-top: 1px solid #333;
+      text-align: center; font-size: 12px; opacity: 0.5;
+    `,
+  });
+  wrap.appendChild(
+    el('div', {
+      style: `margin-bottom: 6px;`,
+      text: 'Manage contacts, templates, integrations',
+    }),
+  );
+  const link = document.createElement('a');
+  link.href = server;
+  link.style.cssText = `color: #39FF6A; text-decoration: none; font-weight: 500;`;
+  link.textContent = stripProto(server);
+  wrap.appendChild(link);
+  wrap.appendChild(
+    el('div', {
+      style: `margin-top: 12px; font-size: 10px; opacity: 0.5;`,
+      text: `VOX v${APP_VERSION} · SDK ${SDK_VERSION}`,
+    }),
+  );
+  return wrap;
+}
+
+/* --- unpaired ----------------------------------------------------------- */
+
 function unpairedScreen(): HTMLElement {
-  const div = el('div', { style: `
-    height: 100%; display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    padding: 32px; text-align: center;
-  ` });
-  div.appendChild(el('h1', { style: `margin: 0; font-size: 24px;`, text: 'VOX' }));
-  div.appendChild(el('p', { style: `margin-top: 16px; opacity: 0.7; max-width: 320px;`,
-    text: 'Not paired yet — finish setup on the VOX dashboard to connect this install to your server.' }));
+  const div = el('div', {
+    style: `
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 32px; text-align: center;
+    `,
+  });
+  div.appendChild(el('div', { style: `font-size: 40px; font-weight: 700;`, text: 'VOX' }));
+  div.appendChild(
+    el('p', {
+      style: `margin-top: 12px; opacity: 0.7; max-width: 320px; font-size: 15px;`,
+      text: 'Not paired yet. Finish setup on the VOX dashboard to connect this install.',
+    }),
+  );
   return div;
 }
 
-/* --- tiny DOM helper -------------------------------------------------- */
+/* --- tiny helpers ------------------------------------------------------- */
+
+function pickIntegration(
+  list: IntegrationView[],
+  provider: IntegrationView['provider'],
+): IntegrationView | undefined {
+  return list.find((i) => i.provider === provider);
+}
+
+function sameDay(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+function stripProto(url: string): string {
+  return url.replace(/^https?:\/\//, '');
+}
+
+type CardState = 'loading' | 'ok' | 'partial' | 'error';
+
+function cardStyle(state: CardState): string {
+  const map: Record<CardState, { bg: string; border: string }> = {
+    loading: { bg: '#262626', border: '#333' },
+    ok: { bg: '#1f2f1f', border: '#305a30' },
+    partial: { bg: '#2f2b1f', border: '#5a4a30' },
+    error: { bg: '#3a1f1f', border: '#5a3030' },
+  };
+  const { bg, border } = map[state];
+  return `
+    padding: 14px 16px;
+    border: 1px solid ${border};
+    border-radius: 12px;
+    background: ${bg};
+  `;
+}
+
+function sectionLabel(text: string): HTMLElement {
+  return el('div', {
+    style: `
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+      opacity: 0.5; margin-bottom: 10px; font-weight: 500;
+    `,
+    text,
+  });
+}
 
 function el(
   tag: string,
-  opts: { style?: string; text?: string; id?: string } = {},
+  opts: { style?: string; text?: string; id?: string; href?: string } = {},
 ): HTMLElement {
   const node = document.createElement(tag);
   if (opts.style) node.style.cssText = opts.style;
   if (opts.text != null) node.textContent = opts.text;
   if (opts.id) node.id = opts.id;
+  if (opts.href && tag === 'a') (node as HTMLAnchorElement).href = opts.href;
   return node;
-}
-
-function bannerStyle(state: 'loading' | 'ok' | 'error'): string {
-  const bg = state === 'error' ? '#3a1f1f' : state === 'ok' ? '#1f2f1f' : '#2a2a2a';
-  const border = state === 'error' ? '#5a3030' : state === 'ok' ? '#305a30' : '#3a3a3a';
-  return `
-    padding: 12px 14px;
-    border: 1px solid ${border};
-    border-radius: 10px;
-    background: ${bg};
-  `;
 }
 
 function formatAgo(ms: number): string {
