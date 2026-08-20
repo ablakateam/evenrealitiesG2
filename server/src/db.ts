@@ -50,7 +50,7 @@ const migrations: Migration[] = [
           always_grammar_fix INTEGER NOT NULL DEFAULT 1,
           rewrite_provider TEXT NOT NULL DEFAULT 'anthropic',
           rewrite_model TEXT NOT NULL DEFAULT 'claude-haiku-4-5',
-          voice_language TEXT NOT NULL DEFAULT 'auto',
+          voice_language TEXT NOT NULL DEFAULT 'en',
           confirm_before_send INTEGER NOT NULL DEFAULT 1,
           smart_channel_inference INTEGER NOT NULL DEFAULT 1,
           smart_idle INTEGER NOT NULL DEFAULT 1,
@@ -211,6 +211,18 @@ const migrations: Migration[] = [
           PRIMARY KEY (user_id, bucket, window_start)
         );
       `);
+    },
+  },
+  {
+    version: 2,
+    description: "voice_language: default 'en' instead of 'auto'",
+    up: (db) => {
+      // Leaving Whisper to auto-detect produced transcriptions in languages
+      // the wearer never spoke (English in, Japanese out). Pinning a
+      // language removes that failure mode entirely. Existing rows are
+      // migrated off 'auto'; a multilingual user can set it back from the
+      // dashboard and own the tradeoff knowingly.
+      db.exec(`UPDATE preferences SET voice_language = 'en' WHERE voice_language = 'auto';`);
     },
   },
 ];

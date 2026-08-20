@@ -118,9 +118,18 @@ export const VoicePage: Page = {
 };
 
 function meterContent(): string {
-  // Two-line block: the live amplitude meter, then the elapsed time.
-  return `\n     ${recorder.meter()}\n\n        ${formatElapsed(recorder.elapsedSeconds)}`;
+  // Centre within the ~100-"char" body line (matches center() in render.ts —
+  // leading-space units, not visible characters). The trace is multi-line
+  // now, so EVERY row needs the indent; padding only the string once left
+  // the first row centred and the rest hugging the left edge.
+  const CHAR_WIDTH = 100;
+  const pad = (line: string): string =>
+    ' '.repeat(Math.max(0, Math.floor((CHAR_WIDTH - line.length) / 2))) + line;
+  const trace = recorder.meter().split('\n').map(pad).join('\n');
+  const timer = formatElapsed(recorder.elapsedSeconds);
+  return `${trace}\n${pad(timer)}`;
 }
+
 
 async function render(ctx: PageContext): Promise<void> {
   let title: string;

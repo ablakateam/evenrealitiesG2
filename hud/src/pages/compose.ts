@@ -108,15 +108,18 @@ export const ComposePage: Page = {
 };
 
 function meterContent(): string {
-  // Meter is 16 chars wide; timer is 4 chars (e.g. "0:03"). Both centered
-  // within the ~100-"char" body line (matches center() in render.ts —
-  // leading-space units, not visible chars).
+  // Centre within the ~100-"char" body line (matches center() in render.ts —
+  // leading-space units, not visible characters). The trace is multi-line
+  // now, so EVERY row needs the indent; padding only the string once left
+  // the first row centred and the rest hugging the left edge.
   const CHAR_WIDTH = 100;
-  const meterPad = ' '.repeat(Math.max(0, Math.floor((CHAR_WIDTH - 16) / 2)));
+  const pad = (line: string): string =>
+    ' '.repeat(Math.max(0, Math.floor((CHAR_WIDTH - line.length) / 2))) + line;
+  const trace = recorder.meter().split('\n').map(pad).join('\n');
   const timer = formatElapsed(recorder.elapsedSeconds);
-  const timerPad = ' '.repeat(Math.max(0, Math.floor((CHAR_WIDTH - timer.length) / 2)));
-  return `\n${meterPad}${recorder.meter()}\n\n${timerPad}${timer}`;
+  return `${trace}\n${pad(timer)}`;
 }
+
 
 async function render(ctx: PageContext): Promise<void> {
   let title: string;
@@ -196,7 +199,13 @@ async function stopAndTranscribe(ctx: PageContext): Promise<void> {
     console.error('[compose] transcribe failed:', err);
     state = 'error';
     errorMsg =
-      err instanceof HudApiError ? err.message : err instanceof Error ? err.message : 'transcription failed';
+      err instanceof HudApiError
+        ? err.code === 'silent_audio'
+          ? "I didn't hear anything."
+          : err.message
+        : err instanceof Error
+          ? err.message
+          : 'transcription failed';
     await render(ctx);
   }
 }

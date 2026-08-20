@@ -3,7 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { compose } from '../compose.js';
-import { transcribe } from '../audio/stt.js';
+import { transcribe, SilentAudioError } from '../audio/stt.js';
 import { LlmError } from '../llm/provider.js';
 import { log } from '../log.js';
 import { rateLimit } from '../rate-limit.js';
@@ -178,6 +178,17 @@ composeRouter.post('/api/rewrite', requireAuth, async (req, res) => {
 });
 
 function handleErr(err: unknown, res: import('express').Response): void {
+  if (err instanceof SilentAudioError) {
+    // 422, not 500: the request was well-formed, the audio just had no
+    // speech in it. The HUD turns this into "I didn't hear anything".
+    res.status(422).json({
+      error: 'silent_audio',
+      message: "I didn't hear anything — try again a bit closer.",
+      rms: err.rms,
+      seconds: err.seconds,
+    });
+    return;
+  }
   if (err instanceof LlmError) {
     log.warn({ err }, 'llm error in compose route');
     const status =

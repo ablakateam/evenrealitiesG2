@@ -69,6 +69,27 @@ function loadContacts(userId: number): ContactRow[] {
     .all(userId) as ContactRow[];
 }
 
+/**
+ * A short, safe Whisper bias prompt built from contact names.
+ * Kept well inside the prompt token budget — this is a nudge, not a corpus.
+ */
+const MAX_PROMPT_NAMES = 24;
+const MAX_PROMPT_CHARS = 220;
+
+export function buildNamePrompt(contacts: ContactRow[]): string | undefined {
+  if (contacts.length === 0) return undefined;
+  const names: string[] = [];
+  let len = 0;
+  for (const c of contacts.slice(0, MAX_PROMPT_NAMES)) {
+    const n = c.name.trim();
+    if (!n) continue;
+    if (len + n.length + 2 > MAX_PROMPT_CHARS) break;
+    names.push(n);
+    len += n.length + 2;
+  }
+  return names.length > 0 ? names.join(', ') : undefined;
+}
+
 function parseIntentJson(raw: string): IntentResult {
   // Strip code-fences if the model wraps JSON in markdown
   const cleaned = raw
@@ -138,8 +159,17 @@ export async function compose(opts: ComposeOptions): Promise<ComposeResult> {
     const sttRes = await transcribe(opts.userId, {
       audio: opts.audio,
       isRawPcm: opts.isRawPcm ?? true,
+      // 'auto' means "let Whisper detect". That is what produced English
+      // speech coming back as Japanese: with no language pinned, whisper-1
+      // is free to pick, and on marginal audio it picks badly. Preferences
+      // now default to 'en'; a multilingual user can set 'auto' back
+      // deliberately and own the tradeoff.
       language: prefs.voice_language === 'auto' ? undefined : prefs.voice_language,
-      prompt: contacts.map((c) => c.name).join(', '), // bias Whisper toward known names
+      // Bias toward known contact names, but BOUNDED. Whisper's prompt is
+      // capped around 224 tokens; feeding it 500 comma-separated names both
+      // truncates arbitrarily and is itself a documented hallucination
+      // trigger — including drifting the output language.
+      prompt: buildNamePrompt(contacts),
     });
     transcription = sttRes.text;
     sttLatency = sttRes.latency_ms;

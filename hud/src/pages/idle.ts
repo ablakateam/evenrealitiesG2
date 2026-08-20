@@ -6,7 +6,7 @@ import { getPairing } from '../kvs.js';
 import { apiGet, HudApiError } from '../api.js';
 import { getBridge } from '../bridge.js';
 import { getPrefs, hydratePrefs } from '../prefs.js';
-import { Pulse, PULSE_HEIGHT } from '../pulse.js';
+import { Pulse, SIGNAL_HEIGHT } from '../pulse.js';
 import { ComposePage } from './compose.js';
 import { InboxPage } from './inbox.js';
 import { VoicePage } from './voice.js';
@@ -34,7 +34,7 @@ import { StylePage } from './style.js';
 const PULSE_ID = 2;
 const MENU_ID = 5;
 
-const MENU_Y = BODY_TOP + PULSE_HEIGHT.compact + 4;
+const MENU_Y = BODY_TOP + SIGNAL_HEIGHT + 4;
 const MENU_H = BODY_BOTTOM - MENU_Y;
 
 interface IdleStatus {
@@ -100,7 +100,7 @@ export const IdlePage: Page = {
     // Pulse.start() is idempotent, but we also own the instance here so a
     // re-mount can never strand a second interval on the same container.
     pulse?.stop();
-    pulse = new Pulse(ctx.bridge, PULSE_ID, 'compact');
+    pulse = new Pulse(ctx.bridge, PULSE_ID);
     pulse.start();
 
     // Fire-and-forget refresh. When it lands, re-render with real counts.
@@ -138,11 +138,11 @@ async function renderIdle(ctx: PageContext): Promise<void> {
         x: 0,
         y: BODY_TOP,
         w: 576,
-        h: PULSE_HEIGHT.compact,
+        h: SIGNAL_HEIGHT,
         border: 0,
         padding: 2,
         capture: false,
-        content: Pulse.initialFrame('compact'),
+        content: Pulse.initialFrame(),
       },
     ],
     lists: [
