@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { Card, CardBody, CardHeader, CardTitle, PageHeading, Button, Spinner, Modal, InlineNote } from '@/components/ui';
 import { apiGet, apiPost, ApiError } from '@/lib/api';
-import { useAuth, readSecret } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 
 interface AccountInfo {
   user_id: number;
@@ -22,17 +22,52 @@ export function Account() {
   const [rotateOpen, setRotateOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const pairingPayload = JSON.stringify({ server: window.location.origin, secret: readSecret() ?? '' });
+  /**
+   * Connect QR.
+   *
+   * This used to encode `{server, secret}` — the PERMANENT shared secret, in
+   * plaintext, on screen. Anyone who photographed it had unlimited Twilio and
+   * LLM spend forever, with no way to detect or revoke it short of rotating.
+   *
+   * It now encodes a URL carrying a single-use handoff token that expires in
+   * three minutes. Scanning opens /connect, which trades it for a session and
+   * burns it. A stale photo of this screen is worthless.
+   */
+  const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
+
+  const mintQr = useCallback(async () => {
+    setQrError(null);
+    try {
+      const res = await apiPost<{ token: string; expires_in: number }>('/api/auth/handoff', {
+        purpose: 'pairing',
+      });
+      const url = `${window.location.origin}/connect?t=${encodeURIComponent(res.token)}`;
+      if (canvasRef.current) {
+        await QRCode.toCanvas(canvasRef.current, url, {
+          width: 180,
+          margin: 1,
+          color: { dark: '#39ff6a', light: '#0a0b0d' },
+        });
+      }
+      setQrExpiresAt(Date.now() + res.expires_in * 1000);
+    } catch (e) {
+      setQrError(e instanceof ApiError ? e.message : 'Could not create a connect code.');
+    }
+  }, []);
 
   useEffect(() => {
-    if (canvasRef.current) {
-      QRCode.toCanvas(canvasRef.current, pairingPayload, {
-        width: 180,
-        margin: 1,
-        color: { dark: '#39ff6a', light: '#0a0b0d' },
-      }).catch(() => {});
-    }
-  }, [pairingPayload]);
+    void mintQr();
+  }, [mintQr]);
+
+  // Countdown so the user can see the code go stale rather than scanning a
+  // dead one and getting an opaque failure on the other device.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secondsLeft = qrExpiresAt ? Math.max(0, Math.round((qrExpiresAt - now) / 1000)) : null;
 
   return (
     <>
@@ -41,15 +76,24 @@ export function Account() {
       {/* Pairing QR */}
       <Card className="mb-3">
         <CardHeader>
-          <CardTitle>Pair a pair of glasses</CardTitle>
+          <CardTitle>Connect another device</CardTitle>
         </CardHeader>
         <CardBody className="flex flex-col items-center">
           <div className="rounded-card border border-line bg-bg-inset p-3">
             <canvas ref={canvasRef} />
           </div>
           <p className="mt-3 text-center text-xs text-ink-faint">
-            Encodes this server's origin + your shared secret for the HUD app.
+            {qrError
+              ? qrError
+              : secondsLeft === null
+                ? 'Preparing a connect code…'
+                : secondsLeft > 0
+                  ? `Scan from another device to sign in. Expires in ${secondsLeft}s — single use.`
+                  : 'This code has expired.'}
           </p>
+          <Button className="mt-3" onClick={() => void mintQr()}>
+            {secondsLeft === 0 ? 'New code' : 'Refresh code'}
+          </Button>
         </CardBody>
       </Card>
 

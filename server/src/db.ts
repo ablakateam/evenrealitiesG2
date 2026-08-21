@@ -225,6 +225,29 @@ const migrations: Migration[] = [
       db.exec(`UPDATE preferences SET voice_language = 'en' WHERE voice_language = 'auto';`);
     },
   },
+  {
+    version: 3,
+    description: 'auth_handoffs — one-time, short-lived tokens for passkey-free sign-in',
+    up: (db) => {
+      // A handoff token stands in for the shared secret exactly once, for a
+      // couple of minutes. It exists so nothing has to carry the permanent
+      // passkey around: not a URL, not a QR code, not the clipboard.
+      // Only the SHA-256 of the token is stored, so a database read cannot
+      // be replayed into a session.
+      db.exec(`
+        CREATE TABLE auth_handoffs (
+          token_hash TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          purpose TEXT NOT NULL DEFAULT 'dashboard',
+          secret_encrypted TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          used_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_auth_handoffs_expiry ON auth_handoffs(expires_at);
+      `);
+    },
+  },
 ];
 
 function runMigrations(db: Database.Database): void {

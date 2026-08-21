@@ -12,6 +12,7 @@ import { Integrations } from '@/pages/Integrations';
 import { Preferences } from '@/pages/Preferences';
 import { Diagnostics } from '@/pages/Diagnostics';
 import { Account } from '@/pages/Account';
+import { Connect } from '@/pages/Connect';
 
 export function App() {
   const { isAuthed } = useAuth();
@@ -21,12 +22,15 @@ export function App() {
       <Routes>
         {!isAuthed ? (
           <>
+            <Route path="/connect" element={<Connect />} />
             <Route path="/welcome" element={<Welcome />} />
             <Route path="*" element={<Navigate to="/welcome" replace />} />
           </>
         ) : (
           <>
             <Route path="/welcome" element={<Navigate to="/" replace />} />
+            {/* Re-connecting while already signed in just swaps the stored secret. */}
+            <Route path="/connect" element={<Connect />} />
             {/* Onboarding wizard — full-screen, outside the dashboard shell */}
             <Route path="/setup" element={<Wizard />} />
             <Route element={<Layout />}>

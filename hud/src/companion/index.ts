@@ -103,6 +103,7 @@ export function renderCompanion(root: HTMLElement): void {
   wrap.appendChild(statusBlock());
   wrap.appendChild(todayBlock());
   wrap.appendChild(styleBlock(server, secret));
+  wrap.appendChild(connectBlock(server, secret));
   wrap.appendChild(quickActionsBlock(server));
   wrap.appendChild(activityBlock());
   wrap.appendChild(footerBlock(server));
@@ -468,6 +469,111 @@ async function applyStyle(server: string, secret: string, tone: Tone): Promise<v
     if (current) current.textContent = "couldn't save — check connection";
   }
 }
+
+/* --- connect + passkey -------------------------------------------------- */
+
+/**
+ * Connecting the dashboard without typing anything.
+ *
+ * The companion already holds the shared secret, so making the user copy a
+ * 32-character passkey into the dashboard was busywork we imposed on
+ * ourselves. Tapping Open dashboard mints a single-use handoff token
+ * (3-minute TTL, burned on first use) and follows a /connect link with it.
+ * The permanent passkey never travels in a URL.
+ *
+ * The passkey is still revealable right here — for a device that can't
+ * follow the link, or when you just need to see it — but it is masked by
+ * default so the screen is safe to hold up or screenshot.
+ */
+function connectBlock(server: string, secret: string): HTMLElement {
+  const wrap = el('section', { style: `margin-top: 22px;` });
+  wrap.appendChild(sectionLabel('dashboard'));
+
+  const card = el('div', {
+    style: `background: #262626; border: 1px solid #333; border-radius: 10px; padding: 14px;`,
+  });
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Open dashboard';
+  btn.style.cssText = `
+    display: block; width: 100%; padding: 13px; border-radius: 9px;
+    background: #39FF6A; color: #101010; border: 0;
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  `;
+  const status = el('div', {
+    style: `font-size: 12px; opacity: 0.55; margin-top: 8px; text-align: center;`,
+    text: 'signs you in automatically — no passkey to type',
+  });
+
+  btn.addEventListener('click', () => {
+    btn.disabled = true;
+    btn.textContent = 'Connecting…';
+    void (async () => {
+      try {
+        const res = await fetch(`${server}/api/auth/handoff`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ purpose: 'dashboard' }),
+        });
+        const data = (await res.json()) as { token?: string };
+        if (!res.ok || !data.token) throw new Error('could not create a connect code');
+        window.location.href = `${server}/connect?t=${encodeURIComponent(data.token)}`;
+      } catch (err) {
+        // Falling back to the plain dashboard URL still works — it just asks
+        // for the passkey, which is exactly the old behaviour.
+        console.warn('[companion] handoff failed, opening dashboard directly:', err);
+        status.textContent = "couldn't auto-connect — opening sign-in";
+        window.location.href = server;
+      }
+    })();
+  });
+
+  card.appendChild(btn);
+  card.appendChild(status);
+
+  // --- reveal ---
+  const revealRow = el('div', {
+    style: `
+      margin-top: 14px; padding-top: 12px; border-top: 1px solid #333;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    `,
+  });
+  const value = el('code', {
+    id: 'vox-passkey',
+    style: `
+      font-size: 13px; letter-spacing: 1px; opacity: 0.75;
+      overflow-wrap: anywhere; min-width: 0; flex: 1 1 auto;
+      font-family: ui-monospace, Menlo, monospace;
+    `,
+    text: MASK,
+  });
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.textContent = 'Show';
+  toggle.style.cssText = `
+    flex: 0 0 auto; padding: 7px 12px; border-radius: 7px; cursor: pointer;
+    background: #1f1f1f; color: #E5E5E5; border: 1px solid #3a3a3a;
+    font: inherit; font-size: 13px;
+  `;
+  let shown = false;
+  toggle.addEventListener('click', () => {
+    shown = !shown;
+    value.textContent = shown ? secret : MASK;
+    toggle.textContent = shown ? 'Hide' : 'Show';
+  });
+  revealRow.appendChild(value);
+  revealRow.appendChild(toggle);
+  card.appendChild(el('div', { style: `font-size: 11px; opacity: 0.4; margin-top: 14px;`, text: 'PASSKEY' }));
+  card.appendChild(revealRow);
+
+  wrap.appendChild(card);
+  return wrap;
+}
+
+/** Fixed-width mask — shorter than the real key so it never wraps. */
+const MASK = '••••••••••••••••••••';
 
 /* --- quick actions ------------------------------------------------------ */
 
