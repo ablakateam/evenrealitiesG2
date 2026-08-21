@@ -61,3 +61,11 @@ qpp screens/
 # and email addresses straight onto the glasses frame, and the pre-commit PII
 # guard greps text — it cannot see PII baked into a PNG. Keep them local.
 screenshots/
+
+# Local copy of Even Realities' own documentation (scraped for offline
+# reference). Not ours to redistribute — read it at hub.evenrealities.com.
+even-realities-docs.txt
+
+# Session journals. Narrative build history kept locally — contains real
+# contact details from testing that the PII guard would (correctly) block.
+DEV/
