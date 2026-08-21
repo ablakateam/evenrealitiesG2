@@ -50,8 +50,14 @@
   scrolls sends `currentSelectItemIndex: 2`. So `?? 0` is the right default.
   `currentSelectItemName` was never populated in any event we observed —
   do not route on it.
-- **There is no long-press event.** `OsEventTypeList` has nine members and no
-  press-duration field, in 0.0.13 or 0.0.14 (closes R-001).
+- **Long press EXISTS as of SDK 0.0.14** — `LONG_PRESS_EVENT = 9` and
+  `LONG_PRESS_RELEASE_EVENT = 10`, deliberately split so hold-to-record and
+  hold-to-scrub are possible. It is absent in 0.0.13, which is what an
+  earlier note in this file wrongly generalised into "there is no long
+  press." Lesson: re-read the enum after every SDK bump; a capability that
+  did not exist two versions ago is not a permanent platform fact.
+- **The contextual-menu gesture is tap-and-hold, not long press** — one fast
+  tap *immediately followed by* a hold. Distinct from LONG_PRESS_EVENT.
 - **The launch tap reaches the first page you mount.** Treat the first ~700 ms
   after a mount as untrusted input.
 - **SDK 0.0.14's page validators are client-side** — they run in your bundle,

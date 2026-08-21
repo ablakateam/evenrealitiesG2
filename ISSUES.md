@@ -61,7 +61,7 @@
 
 | ID | Title | Severity | Status | Mitigation |
 |---|---|---|---|---|
-| **R-001** | SDK long-press detection isn't documented | medium | closed | **Settled 2026-08-20 by reading the SDK surface, not by experiment.** `OsEventTypeList` has exactly nine members (CLICK, SCROLL_TOP, SCROLL_BOTTOM, DOUBLE_CLICK, FOREGROUND_ENTER/EXIT, ABNORMAL_EXIT, SYSTEM_EXIT, IMU_DATA_REPORT) and carries no press-duration field, in 0.0.13 or 0.0.14. There is no long-press to detect. The Idle hub menu replaces it as the discoverability mechanism. |
+| **R-001** | SDK long-press detection isn't documented | medium | **resolved — capability now EXISTS** | I closed this on 2026-08-20 as "there is no long-press to detect", reading `OsEventTypeList` in **0.0.13** and generalising. Wrong: SDK **0.0.14** adds `LONG_PRESS_EVENT = 9` and `LONG_PRESS_RELEASE_EVENT = 10`, split precisely so hold-to-record works. Confirmed in the shipped `index.d.ts` and in the Even Hub developer newsletter (2026-08). See O-001 — this reopens hold-to-talk, which is the closest thing VOX has to its "less touches, more voice" north star. **Re-read the enum after every SDK bump.** |
 | **R-002** | Whisper latency on slow networks | low | open | Show "Transcribing… (slow network)" hint after 5s. Allow user to switch to Deepgram (v2 feature) for streaming partials. |
 | **R-003** | IMAP IDLE drops on cellular / sleep | medium | open | Exponential backoff reconnect (5s, 30s, 2m, 10m, 1h, give up). Telemetry alert at >3 failures/hour. SSE client also auto-reconnects to flush queued events. |
 | **R-004** | OAuth refresh token revoked silently | medium | open | Worker catches `AUTHENTICATIONFAILED`, marks `email_accounts.imap_status = 'error'`, Smart Idle surfaces high-priority "Re-authorize email" suggestion. |
@@ -80,6 +80,30 @@
 | **R-017** | Microphone permission denied by user | medium | open | First-launch flow + onboarding wizard explicitly requests; HUD shows "Permission needed — open phone app to enable" message on `audioControl(true)` failure. Since v0.1.17 a packed build surfaces "no audio from the mic" rather than silently composing a canned message (I-026), so this failure mode is now visible instead of disguised. |
 | **R-019** | SDK/CLI/simulator drift recurs between hardware cycles | low | open | Recurred once already: caught at 0.0.13 → 0.0.14 (plus CLI 0.1.13 → 0.1.14 and simulator 0.7.3 → **0.9.0**, two minors) during the v0.1.17 audit, despite I-017 adding a check to the session ritual. The ritual is not self-enforcing. Run `npm outdated` in `hud/` as the first step of every version bump, and note the versions in the P19-prep table row. |
 | **R-018** | Even Realities phone app update breaks the SDK contract | low | open | `min_sdk_version` declared in `app.json`. If user's phone app is older, WebView refuses to launch with a clear update prompt. |
+
+---
+
+## Platform opportunities (new SDK capability, not yet adopted)
+
+Source: Even Hub Developer Newsletter #1 (2026-08), verified against the
+shipped `@evenrealities/even_hub_sdk@0.0.14` typings.
+
+| ID | Capability | Why VOX cares | Cost to adopt |
+|---|---|---|---|
+| **O-001** | `LONG_PRESS_EVENT` / `LONG_PRESS_RELEASE_EVENT` (0.0.14) | Hold-to-talk. Today compose is tap-to-start / tap-to-stop, and a stray tap was the whole of I-024. Press-and-hold is unambiguous, self-terminating, and is the "less touches, more voice" interaction the RFP asked for. | Handle both events in `bridge.ts`; add a hold mode to `ComposePage`. No manifest change — it's an event we already receive. |
+| **O-002** | Contextual menus — `menuObject` on create/rebuild, `menuItemClickEvent` | An OS-drawn command surface reachable from any page without spending body pixels. Style / Inbox / Voice command could hang off it, freeing the Idle hub body. | **Manifest change:** needs firmware 2.2.9 + Even App 2.2.9 + SDK 0.0.14, so `min_app_version` would have to rise from 2.0.0 → 2.2.9. That excludes testers on older phone apps (R-018). Do NOT bundle this with a bug-fix release. |
+| **O-003** | `textColor` 0–4 on `TextContainerProperty` and `TextContainerUpgrade` | Real typographic hierarchy on a monochrome display. `render.ts` has carried a `Bright` palette since P12 that is applied to `borderColor` only — text brightness had no field to bind to until now. Omitted = device default 4. | Bind `Bright` to `textColor` in `textProp()`. Note the range is **0–4**, not the 0–15 the existing palette assumes — it needs remapping, not passing through. |
+| **O-004** | `zOrderIndex` on list/text/image containers | Overlays without a page rebuild — the standing L:38 escape hatch. | Strict semantics: set on **all** containers or none, values unique per page; partial or duplicate payloads are rejected. `validateEvenHubPageContainer` (already wired into `showPage`) catches this before the bridge does. |
+| **O-005** | LZ4 compression for raw image transfer | Nothing to do — automatic inside the SDK. Relevant only if I-009 (bitmap mascot) is ever picked up. | None. |
+
+**Menu caveat:** the newsletter's example passes `position: 0` on each menu
+item. The shipped `MenuItemProperty` has only `itemName` and `itemID`, and
+its `toJson()` is documented as returning "only the supported first-level
+fields" — so `position` is silently dropped. Don't build ordering
+assumptions on it; verify against the typings, not the newsletter.
+
+**Community:** Even Realities runs weekly developer AMAs on Discord,
+Sundays 7 PM Pacific.
 
 ---
 

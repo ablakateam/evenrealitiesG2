@@ -195,6 +195,28 @@ first step of every version bump — drift has recurred once already (R-019).
 - Emoji not supported. `♥` (card suit) is the fallback for hearts.
 - Text containers < 26 px tall clip content. Minimum height is 26.
 
+**Platform capabilities added in SDK 0.0.14** (Even Hub newsletter 2026-08,
+verified against the shipped typings — see ISSUES.md O-001..O-005):
+- **Long press is real, and it is TWO events**: `LONG_PRESS_EVENT` (9) on
+  press, `LONG_PRESS_RELEASE_EVENT` (10) on release. Absent in 0.0.13. This
+  is the enabler for hold-to-talk. An earlier note in these docs claimed no
+  long press existed — that was read off 0.0.13 and wrongly generalised.
+  **Re-read `OsEventTypeList` after every SDK bump.**
+- **Contextual menus**: pass `menuObject` to create/rebuild, handle
+  `event.menuItemClickEvent.itemID`. Max 10 items, labels <= 32 UTF-8 bytes,
+  itemID non-zero and unique. The gesture is **tap-and-hold** (a fast tap
+  immediately followed by a hold), NOT a plain long press. Menus are a
+  *command* surface — label entries as verbs ("Switch to night", not "Night
+  mode"). **Requires firmware 2.2.9 + Even App 2.2.9**, so adopting it means
+  raising `min_app_version` 2.0.0 -> 2.2.9 and cutting off older phone apps.
+- **`textColor` 0–4** on `TextContainerProperty` / `TextContainerUpgrade` —
+  brightness, not colour; omitted means device default 4. Note `render.ts`'s
+  `Bright` palette is 0–15 and would need remapping, not passing through.
+- **`zOrderIndex`**: set on ALL containers or none, unique per page, or the
+  payload is rejected. `showPage` already runs `validateEvenHubPageContainer`
+  which catches this locally.
+- **LZ4 image compression** is automatic inside the SDK; no app-side change.
+
 **`CLICK_EVENT` gotcha.** `CLICK_EVENT === 0` serializes to `undefined`
 on the bridge. `bridge.ts` normalizes this — always route touch events
 through the normalized `NormalizedEvent.kind` field, never raw. Same for
