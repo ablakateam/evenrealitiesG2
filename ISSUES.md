@@ -16,7 +16,7 @@
 
 | ID | Title | Severity | Status | Owner | Opened | Notes |
 |---|---|---|---|---|---|---|
-| I-001 | App runs as root on VPS | medium | open | Claude | 2026-05-13 | Hardening deferred: should create a non-root `vox` user with sudo, copy SSH key, run pm2 services as that user. Currently `vox-hello` runs as root. Mitigate before P10/P19 hardware tests. |
+| I-001 | App runs as root on VPS | medium | open | — | 2026-05-13 | Hardening deferred: should create a non-root `vox` user with sudo, copy SSH key, run pm2 services as that user. Currently `vox-hello` runs as root. Mitigate before P10/P19 hardware tests. |
 | I-002 | Server log retention not configured | low | open | — | 2026-05-13 | pm2 logs at `~/.pm2/logs/` grow without bound. Add logrotate rule before going live. |
 | I-004 | First IMAP connect backfills entire mailbox history | low | open | — | 2026-05-13 | First-time IMAP IDLE pulled all 462 emails from Migadu (back to Nov 2025). Functional but heavy for a new account. Polish: on first connect, set imap_last_uid = (uidNext - 1) to start "fresh from now", with an opt-in "import history" toggle in the onboarding wizard. Update worker logic in P9 alongside the wizard. |
 | I-005 | Inbox deduplication by Message-ID | low | open | — | 2026-05-13 | Self-sends (<YOUR_EMAIL> → <YOUR_EMAIL>) landed twice (id 461 + 462) because Migadu delivers to both Sent folder copy and Inbox. Add unique constraint on (user_id, raw_payload_json->message_id) or a dedup check in the IDLE fetch loop. |
@@ -35,7 +35,7 @@
 | I-020 | Inbound SMS never reaches the SSE stream | medium | open | — | 2026-08-20 | `routes/twilio-webhooks.ts` inserts the inbox row but never calls `inboxBus.publishNew` — the code comment says "SSE push to the HUD is wired in P15" and it never was. The email path (`mail/idle.ts:181`) does publish. Consequence: a dashboard or HUD subscribed to `/api/inbox/stream` sees new email live but not new SMS. Also no dedup on `MessageSid`, so a Twilio retry inserts a duplicate row (same class as I-005). |
 | I-021 | `/webhooks/twilio/status` leaves the outbox row stale | low | open | — | 2026-08-20 | The delivery callback updates `history.status` keyed by `provider_message_id` but never touches the matching `outbox` row, which stays `'sent'` forever even when Twilio later reports `failed`/`undelivered`. Harmless today (nothing reads outbox status after send) but it makes the outbox useless as a retry queue. |
 | I-022 | argon2 verify runs on every authenticated request | low | open | — | 2026-08-20 | `requireAuth` iterates every user row and runs `argon2.verify` (19 MiB, t=2) until one matches — roughly 30–50 ms added to every API call including the compose hot path, and O(n) once there is more than one user. Consider a short-lived in-memory cache keyed by a hash of the presented token. |
-| I-012 | Auto-mode blocks safe direct push to main + Finder reveal | low | mitigated | Claude | 2026-08-20 | Harness classifier flags `git push origin main` and `open -R vox.ehpk` as needing explicit auth. Workflow is direct-push-to-main on the (private) repo, so this bounces every ship cycle. Mitigation: user runs those two commands manually after review. Could add Bash permission rules to `.claude/settings.json` but leaving to user's discretion. |
+| I-012 | Auto-mode blocks safe direct push to main + Finder reveal | low | wontfix | — | 2026-08-20 | Local tooling restriction on the maintainer's workstation, not a property of the project. Removed from the active list. |
 
 ---
 

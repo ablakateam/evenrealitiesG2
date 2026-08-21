@@ -1,5 +1,6 @@
-# Claude Code session-local config (per-machine, not for repo)
+# Editor / assistant session-local config (per-machine, not for repo)
 .claude/
+CLAUDE.md
 
 # Node
 node_modules/
