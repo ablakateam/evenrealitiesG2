@@ -65,7 +65,7 @@ export function SidebarBrand() {
   return (
     <div className="flex h-14 shrink-0 items-center gap-2 px-5">
       <span className="text-base font-bold tracking-tight text-ink">VOX</span>
-      <span className="rounded bg-phos/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-phos">
+      <span className="rounded bg-phos/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-phos">
         G2
       </span>
     </div>

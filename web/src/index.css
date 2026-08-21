@@ -139,12 +139,41 @@
    back out of on every single form field. The 14px desktop size returns at
    lg where there is no such behaviour. */
 @media (max-width: 1023px) {
-  input.text-sm,
-  textarea.text-sm,
-  select.text-sm,
+  /* [class] raises specificity above ANY single font-size utility
+     (.text-sm, .text-xs, ...). The first attempt listed `.text-sm`
+     explicitly and missed the CSV import textarea, which is `.text-xs` —
+     it was the one control left that still zoomed on focus. */
   input,
   textarea,
-  select {
+  select,
+  input[class],
+  textarea[class],
+  select[class] {
     font-size: 16px;
+  }
+}
+
+/* Keyboard-safe focus for PAGE-level forms (Welcome passkey, the setup
+   wizard, CSV import) — the sheet handles its own case in Modal.
+
+   When the browser scrolls a focused field into view it stops as soon as the
+   field is technically visible, which on a page with a sticky header means
+   "visible" can mean tucked under it. scroll-margin reserves the header's
+   height plus a little breathing room. */
+@media (max-width: 1023px) {
+  input:focus,
+  textarea:focus,
+  select:focus {
+    scroll-margin-top: 5.5rem;
+    scroll-margin-bottom: 1.5rem;
+  }
+}
+
+/* `dvh` tracks the visual viewport on iOS 16+; `vh` does not shrink for the
+   keyboard. Progressive enhancement — browsers without dvh keep the vh rule
+   above it. */
+@supports (height: 100dvh) {
+  .h-screen-dvh {
+    height: 100dvh;
   }
 }

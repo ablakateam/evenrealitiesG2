@@ -69,7 +69,7 @@ export function Layout() {
             <span className="truncate text-sm font-semibold text-ink">
               {current?.label ?? 'VOX'}
             </span>
-            <span className="ml-auto mr-2 rounded bg-phos/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-phos">
+            <span className="ml-auto mr-2 rounded bg-phos/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-phos">
               G2
             </span>
           </div>

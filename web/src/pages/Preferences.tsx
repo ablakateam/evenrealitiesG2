@@ -111,7 +111,7 @@ export function Preferences() {
           />
         </Row>
         <Row label="Always apply grammar-fix">
-          <Switch checked={local.always_grammar_fix} onChange={(v) => set('always_grammar_fix', v)} />
+          <Switch checked={local.always_grammar_fix} onChange={(v) => set('always_grammar_fix', v)} label="always grammar fix" />
         </Row>
         <Row label="Rewrite provider">
           <Select
@@ -132,10 +132,10 @@ export function Preferences() {
           <Input value={local.voice_language} onChange={(e) => set('voice_language', e.target.value)} className="w-32" />
         </Row>
         <Row label="Confirm before send">
-          <Switch checked={local.confirm_before_send} onChange={(v) => set('confirm_before_send', v)} />
+          <Switch checked={local.confirm_before_send} onChange={(v) => set('confirm_before_send', v)} label="confirm before send" />
         </Row>
         <Row label="Smart channel inference">
-          <Switch checked={local.smart_channel_inference} onChange={(v) => set('smart_channel_inference', v)} />
+          <Switch checked={local.smart_channel_inference} onChange={(v) => set('smart_channel_inference', v)} label="smart channel inference" />
         </Row>
       </Section>
 
@@ -156,33 +156,33 @@ export function Preferences() {
           />
         </Row>
         <Row label="Always-on voice while in foreground">
-          <Switch checked={local.always_on_voice} onChange={(v) => set('always_on_voice', v)} />
+          <Switch checked={local.always_on_voice} onChange={(v) => set('always_on_voice', v)} label="always on voice" />
         </Row>
       </Section>
 
       {/* Smart features */}
       <Section title="Smart features">
         <Row label="Smart Idle suggestions">
-          <Switch checked={local.smart_idle} onChange={(v) => set('smart_idle', v)} />
+          <Switch checked={local.smart_idle} onChange={(v) => set('smart_idle', v)} label="smart idle" />
         </Row>
         <Row label="Smart Pause auto-send">
-          <Switch checked={local.smart_pause} onChange={(v) => set('smart_pause', v)} />
+          <Switch checked={local.smart_pause} onChange={(v) => set('smart_pause', v)} label="smart pause" />
         </Row>
         <Row label="Tone memory per contact">
-          <Switch checked={local.tone_memory_per_contact} onChange={(v) => set('tone_memory_per_contact', v)} />
+          <Switch checked={local.tone_memory_per_contact} onChange={(v) => set('tone_memory_per_contact', v)} label="tone memory per contact" />
         </Row>
         <Row label="Long-press = send last to last">
-          <Switch checked={local.long_press_send_last} onChange={(v) => set('long_press_send_last', v)} />
+          <Switch checked={local.long_press_send_last} onChange={(v) => set('long_press_send_last', v)} label="long press send last" />
         </Row>
       </Section>
 
       {/* Notifications */}
       <Section title="Notifications">
         <Row label="Notify on new SMS">
-          <Switch checked={local.notify_on_sms} onChange={(v) => set('notify_on_sms', v)} />
+          <Switch checked={local.notify_on_sms} onChange={(v) => set('notify_on_sms', v)} label="notify on sms" />
         </Row>
         <Row label="Notify on new email">
-          <Switch checked={local.notify_on_email} onChange={(v) => set('notify_on_email', v)} />
+          <Switch checked={local.notify_on_email} onChange={(v) => set('notify_on_email', v)} label="notify on email" />
         </Row>
         <Row label="Quiet hours start">
           <Input
@@ -259,7 +259,10 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <span className="text-sm text-ink-muted">{label}</span>
-      <div className="flex w-full justify-start sm:w-auto sm:justify-end [&>*]:w-full sm:[&>*]:w-auto">
+      {/* Only inputs and selects stretch. Scoping this with [&>input] and
+          [&>select] rather than [&>*] matters: the blanket rule was making
+          the Switch 332px wide, so its hit area swallowed the whole row. */}
+      <div className="flex w-full justify-start sm:w-auto sm:justify-end [&>input]:w-full [&>select]:w-full sm:[&>input]:w-auto sm:[&>select]:w-auto">
         {children}
       </div>
     </div>

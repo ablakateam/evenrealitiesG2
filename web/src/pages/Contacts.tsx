@@ -91,10 +91,10 @@ export function Contacts() {
                   {[c.phone_e164, c.email].filter(Boolean).join(' · ') || 'no contact info'}
                 </div>
               </div>
-              <button onClick={() => setEditing(c)} className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-ink lg:h-8 lg:w-8">
+              <button onClick={() => setEditing(c)} aria-label="Edit contact" className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-ink lg:h-8 lg:w-8">
                 <Pencil size={15} />
               </button>
-              <button onClick={() => remove.mutate(c.id)} className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-danger lg:h-8 lg:w-8">
+              <button onClick={() => remove.mutate(c.id)} aria-label="Delete contact" className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-danger lg:h-8 lg:w-8">
                 <Trash2 size={15} />
               </button>
             </CardBody>

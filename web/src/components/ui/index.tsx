@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 
 /* ----------------------------------------------------------------------------
  * Minimal UI primitives — shadcn aesthetic, hand-rolled (no CLI dependency).
@@ -134,16 +134,20 @@ export function Switch({
   checked,
   onChange,
   disabled,
+  label,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  /** Accessible name. A bare toggle announces as "button" to VoiceOver. */
+  label?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       // The visible track stays 20x36; the -m-3/p-3 pair grows the HIT area
@@ -195,7 +199,49 @@ export function Select({
   );
 }
 
-/* --- Modal (simple bottom-sheet-ish overlay) ----------------------------- */
+/* --- Modal (keyboard-aware bottom sheet) --------------------------------- */
+
+/**
+ * Tracks the space the on-screen keyboard is occupying.
+ *
+ * `vh` units do NOT shrink when iOS raises the keyboard — the layout
+ * viewport is unchanged and only the *visual* viewport gets smaller. A sheet
+ * sized with `max-h-[90vh]` and pinned to the bottom therefore stays exactly
+ * where it was, i.e. behind the keyboard, with every input under it. That is
+ * the bug: opening Add contact put all three fields out of reach.
+ *
+ * visualViewport gives us the real numbers. `innerHeight - (height +
+ * offsetTop)` is the covered strip at the bottom; we lift the sheet by that
+ * much and cap its height to what is actually visible.
+ */
+function useKeyboardInset(active: boolean): { inset: number; visibleHeight: number } {
+  const [state, setState] = useState({ inset: 0, visibleHeight: 0 });
+
+  useEffect(() => {
+    if (!active) return;
+    const vv = window.visualViewport;
+    const read = () => {
+      if (!vv) {
+        setState({ inset: 0, visibleHeight: window.innerHeight });
+        return;
+      }
+      // Round down: a fractional inset leaves a hairline of keyboard showing.
+      const inset = Math.max(0, Math.floor(window.innerHeight - (vv.height + vv.offsetTop)));
+      setState({ inset, visibleHeight: Math.floor(vv.height) });
+    };
+    read();
+    if (!vv) return;
+    vv.addEventListener('resize', read);
+    vv.addEventListener('scroll', read);
+    return () => {
+      vv.removeEventListener('resize', read);
+      vv.removeEventListener('scroll', read);
+    };
+  }, [active]);
+
+  return state;
+}
+
 export function Modal({
   open,
   onClose,
@@ -207,8 +253,10 @@ export function Modal({
   title: string;
   children: ReactNode;
 }) {
-  // Lock background scroll while open so the page behind doesn't slide
-  // under the sheet on iOS.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const { inset, visibleHeight } = useKeyboardInset(open);
+
+  // Lock background scroll so the page behind doesn't slide under the sheet.
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -227,31 +275,70 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Put the caret in the first field. Without this the sheet opens "cold" —
+  // the user has to aim at a field before they can type, which on a phone
+  // means a second tap and a second chance to miss.
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      const first = panelRef.current?.querySelector<HTMLElement>(
+        'input:not([type=hidden]):not([disabled]), textarea, select',
+      );
+      first?.focus();
+    }, 80);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  // Whatever gains focus inside the sheet gets scrolled clear of the
+  // keyboard. `block: 'center'` rather than 'nearest' so the field lands in
+  // the middle of the remaining space, leaving its label readable too.
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const onFocusIn = (e: FocusEvent) => {
+      const el = e.target as HTMLElement;
+      if (!el || !panel.contains(el)) return;
+      setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 120);
+    };
+    panel.addEventListener('focusin', onFocusIn);
+    return () => panel.removeEventListener('focusin', onFocusIn);
+  }, [open]);
+
   if (!open) return null;
+
+  // Cap to the space the keyboard leaves. Falls back to 90dvh (and 90vh for
+  // browsers without dvh) before visualViewport has reported.
+  const maxHeight = visibleHeight > 0 ? Math.floor(visibleHeight * 0.92) : undefined;
+
   return (
     <div
       // Bottom sheet on phones (thumb-reachable, native-feeling), centred
       // dialog from sm up. A centred box on a 390px screen wastes the top
-      // half and puts the controls in the hardest place to reach.
+      // half and puts the controls where the thumb cannot reach.
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
+      aria-label={title}
+      style={{ paddingBottom: inset > 0 ? inset : undefined }}
     >
       <div
-        className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-bg-raised pb-safe sm:max-w-md sm:rounded-card sm:pb-0"
+        ref={panelRef}
+        className="max-h-[90dvh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border border-line bg-bg-raised pb-safe sm:max-w-md sm:rounded-card sm:pb-0"
+        style={maxHeight ? { maxHeight } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Grab handle — reads as a sheet, and is a bigger dismiss target. */}
-        <div className="flex justify-center pt-2 sm:hidden">
+        <div className="sticky top-0 z-10 flex justify-center bg-bg-raised pt-2 sm:hidden">
           <span className="h-1 w-10 rounded-full bg-line-strong" />
         </div>
-        <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5 sm:py-3.5">
-          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-bg-raised px-4 py-3 sm:px-5 sm:py-3.5">
+          <h3 className="min-w-0 truncate text-sm font-semibold text-ink">{title}</h3>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="grid h-touch w-touch place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-ink sm:h-8 sm:w-8"
+            className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-ink sm:h-8 sm:w-8"
           >
             ✕
           </button>
