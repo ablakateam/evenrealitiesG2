@@ -4,6 +4,23 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      screens: {
+        // Explicit mobile-first ladder. `xs` catches the iPhone SE / mini
+        // class (320-374px) where two-up grids stop fitting.
+        xs: '375px',
+      },
+      spacing: {
+        // Safe-area insets as first-class spacing tokens so components can
+        // say `pt-safe-top` instead of hand-rolling env() in a style attr.
+        'safe-top': 'env(safe-area-inset-top, 0px)',
+        'safe-bottom': 'env(safe-area-inset-bottom, 0px)',
+        'safe-left': 'env(safe-area-inset-left, 0px)',
+        'safe-right': 'env(safe-area-inset-right, 0px)',
+        // Minimum comfortable touch target (Apple HIG).
+        touch: '44px',
+      },
+      minHeight: { touch: '44px' },
+      minWidth: { touch: '44px' },
       colors: {
         // VOX dark palette — mirrors Even Hub's near-black + the G2 phosphor green
         bg: {

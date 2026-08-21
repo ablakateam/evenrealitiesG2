@@ -257,9 +257,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <span className="text-sm text-ink-muted">{label}</span>
-      {children}
+      <div className="flex w-full justify-start sm:w-auto sm:justify-end [&>*]:w-full sm:[&>*]:w-auto">
+        {children}
+      </div>
     </div>
   );
 }

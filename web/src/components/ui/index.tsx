@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 
 /* ----------------------------------------------------------------------------
  * Minimal UI primitives — shadcn aesthetic, hand-rolled (no CLI dependency).
@@ -28,8 +28,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-lg transition-colors disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-phos/40',
-        size === 'sm' ? 'h-8 px-3 text-sm' : 'h-10 px-4 text-sm',
+        'inline-flex select-none items-center justify-center gap-2 rounded-lg transition-colors disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-phos/40',
+        // 44px minimum on touch viewports (Apple HIG); the tighter desktop
+        // heights come back at lg where the pointer is precise.
+        size === 'sm' ? 'min-h-touch px-3 text-sm lg:h-8 lg:min-h-0' : 'min-h-touch px-4 text-sm lg:h-10 lg:min-h-0',
         buttonVariants[variant],
         className,
       )}
@@ -51,7 +53,7 @@ export function CardHeader({ children, className }: { children: ReactNode; class
 }
 
 export function CardTitle({ children }: { children: ReactNode }) {
-  return <h3 className="text-sm font-semibold text-ink">{children}</h3>;
+  return <h3 className="min-w-0 text-sm font-semibold text-ink">{children}</h3>;
 }
 
 export function CardBody({ children, className }: { children: ReactNode; className?: string }) {
@@ -64,7 +66,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cx(
-        'h-10 w-full rounded-lg border border-line bg-bg-inset px-3 text-sm text-ink placeholder:text-ink-faint',
+        'min-h-touch w-full rounded-lg border border-line bg-bg-inset px-3 text-sm text-ink placeholder:text-ink-faint lg:h-10 lg:min-h-0',
         'focus:outline-none focus:border-phos/50 focus:ring-1 focus:ring-phos/30',
         className,
       )}
@@ -106,7 +108,7 @@ export function StatusDot({ tone }: { tone: BadgeTone }) {
 export function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-6">
-      <h1 className="text-xl font-semibold text-ink">{title}</h1>
+      <h1 className="text-lg font-semibold text-ink sm:text-xl">{title}</h1>
       {subtitle && <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>}
     </div>
   );
@@ -144,16 +146,19 @@ export function Switch({
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
+      // The visible track stays 20x36; the -m-3/p-3 pair grows the HIT area
+      // to 44px without changing the layout around it.
       className={cx(
-        'relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-40',
+        'relative -m-3 box-content h-5 w-9 shrink-0 rounded-full bg-clip-content p-3 transition-colors disabled:opacity-40',
         checked ? 'bg-phos' : 'bg-line-strong',
       )}
     >
       <span
         className={cx(
-          'absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-transform',
+          'absolute top-3.5 h-4 w-4 rounded-full bg-bg transition-transform',
           checked ? 'translate-x-4' : 'translate-x-0.5',
         )}
+        style={{ left: '0.75rem' }}
       />
     </button>
   );
@@ -176,7 +181,7 @@ export function Select({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={cx(
-        'h-10 rounded-lg border border-line bg-bg-inset px-3 text-sm text-ink',
+        'min-h-touch max-w-full rounded-lg border border-line bg-bg-inset px-3 text-sm text-ink lg:h-10 lg:min-h-0',
         'focus:border-phos/50 focus:outline-none focus:ring-1 focus:ring-phos/30',
         className,
       )}
@@ -202,23 +207,56 @@ export function Modal({
   title: string;
   children: ReactNode;
 }) {
+  // Lock background scroll while open so the page behind doesn't slide
+  // under the sheet on iOS.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      // Bottom sheet on phones (thumb-reachable, native-feeling), centred
+      // dialog from sm up. A centred box on a 390px screen wastes the top
+      // half and puts the controls in the hardest place to reach.
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
     >
       <div
-        className="w-full max-w-md rounded-card border border-line bg-bg-raised"
+        className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-bg-raised pb-safe sm:max-w-md sm:rounded-card sm:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+        {/* Grab handle — reads as a sheet, and is a bigger dismiss target. */}
+        <div className="flex justify-center pt-2 sm:hidden">
+          <span className="h-1 w-10 rounded-full bg-line-strong" />
+        </div>
+        <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5 sm:py-3.5">
           <h3 className="text-sm font-semibold text-ink">{title}</h3>
-          <button onClick={onClose} className="text-ink-faint hover:text-ink">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="grid h-touch w-touch place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-ink sm:h-8 sm:w-8"
+          >
             ✕
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="px-4 py-4 sm:px-5">{children}</div>
       </div>
     </div>
   );

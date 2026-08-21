@@ -153,7 +153,7 @@ function IntegrationCard({
   return (
     <Card className="mb-3">
       <CardHeader>
-        <span className="flex items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <StatusDot tone={tone} />
           <CardTitle>{PROVIDER_LABEL[view.provider] ?? view.provider}</CardTitle>
         </span>
@@ -178,7 +178,7 @@ function IntegrationCard({
         ) : (
           <p className="text-sm text-ink-faint">Add credentials to enable this provider.</p>
         )}
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={onEdit}>
             {view.configured ? 'Edit' : 'Configure'}
           </Button>
@@ -217,7 +217,7 @@ function EmailCard({
   return (
     <Card className="mb-3">
       <CardHeader>
-        <span className="flex items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <StatusDot tone={tone} />
           <CardTitle>Email account</CardTitle>
         </span>
@@ -358,7 +358,7 @@ function EmailModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
   return (
     <Modal open onClose={onClose} title="Email account">
       <Field label="Provider">
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 xs:grid-cols-3 sm:grid-cols-4">
           {(['gmail', 'outlook', 'icloud', 'custom'] as const).map((p) => (
             <button
               key={p}
@@ -379,7 +379,7 @@ function EmailModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
         <Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
       </Field>
       {f.provider === 'custom' && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 xs:grid-cols-2">
           <Field label="SMTP host">
             <Input value={f.smtp_host} onChange={(e) => setF({ ...f, smtp_host: e.target.value })} />
           </Field>

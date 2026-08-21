@@ -193,7 +193,7 @@ export function StepEmail({ onNext, onSkip }: StepProps) {
         folder, replies arrive in your normal inbox.
       </p>
       <Field label="Provider">
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 xs:grid-cols-3 sm:grid-cols-4">
           {(['gmail', 'outlook', 'icloud', 'custom'] as const).map((p) => (
             <button
               key={p}
@@ -222,7 +222,7 @@ export function StepEmail({ onNext, onSkip }: StepProps) {
         </p>
       )}
       {provider === 'custom' && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 xs:grid-cols-2">
           <Field label="SMTP host">
             <Input value={custom.smtp_host} onChange={(e) => setCustom({ ...custom, smtp_host: e.target.value })} placeholder="smtp.example.com" />
           </Field>
@@ -397,7 +397,7 @@ export function StepContacts({ onNext, onSkip }: StepProps) {
           <Field label="Name">
             <Input value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} placeholder="Alex Morgan" />
           </Field>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 xs:grid-cols-2">
             <Field label="Phone">
               <Input value={manual.phone} onChange={(e) => setManual({ ...manual, phone: e.target.value })} placeholder="+1…" />
             </Field>

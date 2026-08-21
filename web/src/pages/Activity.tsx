@@ -58,7 +58,7 @@ export function Activity() {
         <CardBody>
           {stats.isLoading && <Spinner />}
           {stats.data && (
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 text-sm">
               <Metric label="Sent (total)" value={stats.data.sent.total} />
               <Metric label="Received (total)" value={stats.data.received.total} />
               <Metric label="Failed (total)" value={stats.data.failed.total} tone={stats.data.failed.total > 0 ? 'bad' : undefined} />
@@ -70,7 +70,7 @@ export function Activity() {
         </CardBody>
       </Card>
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <Select
           value={channel}
           onChange={setChannel}
@@ -101,17 +101,19 @@ export function Activity() {
       <div className="space-y-1.5">
         {history.data?.items.map((h) => (
           <Card key={h.id}>
-            <CardBody className="flex items-center gap-3 py-2.5 text-sm">
-              {h.direction === 'out' ? (
-                <ArrowUpRight size={14} className="shrink-0 text-ink-faint" />
-              ) : (
-                <ArrowDownLeft size={14} className="shrink-0 text-phos" />
-              )}
-              <span className="w-10 shrink-0 text-xs uppercase text-ink-faint">{h.channel}</span>
-              <span className="w-28 shrink-0 truncate text-ink-muted">{h.contact_name ?? '—'}</span>
-              <span className="flex-1 truncate text-ink">{h.subject ?? h.body}</span>
-              {h.tone && <span className="shrink-0 text-xs text-ink-faint">{h.tone}</span>}
-              <StatusText status={h.status} />
+            <CardBody className="py-2.5 text-sm">
+              <div className="flex items-center gap-2">
+                {h.direction === 'out' ? (
+                  <ArrowUpRight size={14} className="shrink-0 text-ink-faint" />
+                ) : (
+                  <ArrowDownLeft size={14} className="shrink-0 text-phos" />
+                )}
+                <span className="shrink-0 text-xs uppercase text-ink-faint">{h.channel}</span>
+                <span className="min-w-0 flex-1 truncate text-ink-muted">{h.contact_name ?? '—'}</span>
+                {h.tone && <span className="hidden shrink-0 text-xs text-ink-faint xs:inline">{h.tone}</span>}
+                <StatusText status={h.status} />
+              </div>
+              <p className="mt-1 line-clamp-2 break-words pl-[22px] text-ink">{h.subject ?? h.body}</p>
             </CardBody>
           </Card>
         ))}

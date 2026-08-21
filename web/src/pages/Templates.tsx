@@ -69,8 +69,8 @@ export function Templates() {
       <div className="space-y-2">
         {items.map((t, idx) => (
           <Card key={t.id}>
-            <CardBody className="flex items-center gap-3 py-3">
-              <div className="flex flex-col">
+            <CardBody className="flex items-center gap-2 py-3 sm:gap-3">
+              <div className="flex shrink-0 flex-col">
                 <button onClick={() => move(idx, -1)} disabled={idx === 0} className="text-ink-faint hover:text-ink disabled:opacity-30">
                   <ChevronUp size={14} />
                 </button>
@@ -86,10 +86,10 @@ export function Templates() {
                 <div className="text-sm font-medium text-ink">{t.label}</div>
                 <div className="truncate text-xs text-ink-muted">{t.body}</div>
               </div>
-              <button onClick={() => setEditing(t)} className="text-ink-faint hover:text-ink">
+              <button onClick={() => setEditing(t)} className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-ink lg:h-8 lg:w-8">
                 <Pencil size={15} />
               </button>
-              <button onClick={() => remove.mutate(t.id)} className="text-ink-faint hover:text-danger">
+              <button onClick={() => remove.mutate(t.id)} className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-danger lg:h-8 lg:w-8">
                 <Trash2 size={15} />
               </button>
             </CardBody>

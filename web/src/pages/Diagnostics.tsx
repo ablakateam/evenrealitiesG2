@@ -38,7 +38,7 @@ export function Diagnostics() {
       <PageHeading title="Diagnostics" subtitle="End-to-end health checks across every pipe" />
 
       <Card className="mb-4">
-        <CardBody className="flex items-center justify-between py-4">
+        <CardBody className="flex flex-wrap items-center justify-between gap-3 py-4">
           <div>
             <div className="text-sm text-ink">Run all checks</div>
             {result && (

@@ -77,8 +77,12 @@ export function Contacts() {
       <div className="space-y-2">
         {contacts.data?.items.map((c) => (
           <Card key={c.id}>
-            <CardBody className="flex items-center gap-3 py-3">
-              <button onClick={() => toggleFav.mutate(c)} className="shrink-0">
+            <CardBody className="flex items-center gap-2 py-3 sm:gap-3">
+              <button
+                onClick={() => toggleFav.mutate(c)}
+                aria-label={c.favorite ? 'Unfavourite' : 'Favourite'}
+                className="grid h-touch w-touch shrink-0 place-items-center rounded-lg hover:bg-bg-inset lg:h-8 lg:w-8"
+              >
                 <Star size={16} className={c.favorite ? 'fill-phos text-phos' : 'text-ink-faint'} />
               </button>
               <div className="min-w-0 flex-1">
@@ -87,10 +91,10 @@ export function Contacts() {
                   {[c.phone_e164, c.email].filter(Boolean).join(' · ') || 'no contact info'}
                 </div>
               </div>
-              <button onClick={() => setEditing(c)} className="text-ink-faint hover:text-ink">
+              <button onClick={() => setEditing(c)} className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-ink lg:h-8 lg:w-8">
                 <Pencil size={15} />
               </button>
-              <button onClick={() => remove.mutate(c.id)} className="text-ink-faint hover:text-danger">
+              <button onClick={() => remove.mutate(c.id)} className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-bg-inset hover:text-danger lg:h-8 lg:w-8">
                 <Trash2 size={15} />
               </button>
             </CardBody>

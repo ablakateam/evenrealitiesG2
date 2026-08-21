@@ -53,7 +53,7 @@ export function Overview() {
       {needsSetup && (
         <Link
           to="/setup"
-          className="mb-4 flex items-center justify-between rounded-card border border-phos/30 bg-phos/5 px-4 py-3 transition-colors hover:bg-phos/10"
+          className="mb-4 flex w-full items-center justify-between gap-3 rounded-card border border-phos/30 bg-phos/5 px-4 py-3 text-left transition-colors hover:bg-phos/10"
         >
           <span className="text-sm text-ink">
             <span className="font-medium text-phos">Finish setup</span> — some integrations aren't connected yet.
@@ -96,7 +96,7 @@ export function Overview() {
         <CardBody>
           {stats.isLoading && <Spinner />}
           {stats.data && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               <Stat label="Sent" value={stats.data.sent.today} />
               <Stat label="Failed" value={stats.data.failed.today} tone={stats.data.failed.today > 0 ? 'bad' : 'idle'} />
               <Stat label="Received" value={stats.data.received.today} />
@@ -124,16 +124,22 @@ export function Overview() {
           {recent.data && recent.data.items.length > 0 && (
             <ul className="divide-y divide-line">
               {recent.data.items.map((item) => (
-                <li key={item.id} className="flex items-center gap-3 py-2.5 text-sm">
-                  {item.direction === 'out' ? (
-                    <ArrowUpRight size={15} className="shrink-0 text-ink-faint" />
-                  ) : (
-                    <ArrowDownLeft size={15} className="shrink-0 text-phos" />
-                  )}
-                  <span className="w-12 shrink-0 text-xs uppercase text-ink-faint">{item.channel}</span>
-                  <span className="shrink-0 text-ink-muted">{item.contact_name ?? '—'}</span>
-                  <span className="flex-1 truncate text-ink">{item.subject ?? item.body}</span>
-                  <StatusBadge status={item.status} />
+                <li key={item.id} className="py-2.5 text-sm">
+                  <div className="flex items-center gap-2">
+                    {item.direction === 'out' ? (
+                      <ArrowUpRight size={15} className="shrink-0 text-ink-faint" />
+                    ) : (
+                      <ArrowDownLeft size={15} className="shrink-0 text-phos" />
+                    )}
+                    <span className="shrink-0 text-xs uppercase text-ink-faint">{item.channel}</span>
+                    <span className="min-w-0 flex-1 truncate text-ink-muted">
+                      {item.contact_name ?? '—'}
+                    </span>
+                    <StatusBadge status={item.status} />
+                  </div>
+                  <p className="mt-1 line-clamp-2 break-words pl-[23px] text-ink">
+                    {item.subject ?? item.body}
+                  </p>
                 </li>
               ))}
             </ul>

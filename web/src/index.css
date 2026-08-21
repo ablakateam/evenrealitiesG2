@@ -13,9 +13,35 @@
     height: 100%;
   }
 
+  html {
+    /* iOS Safari shrinks/enlarges text on rotation without this. */
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-bg text-ink font-sans antialiased;
     margin: 0;
+    /* Nothing in this app scrolls sideways on purpose. A single overflowing
+       card used to drag the whole page with it. */
+    overflow-x: hidden;
+    /* Kill the grey flash on tap and the rubber-band bounce past the ends. */
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  /* iOS zooms the viewport when a focused input's font-size is under 16px.
+     This lives OUTSIDE @layer base (see the bottom of this file) because a
+     bare element selector loses to Tailwind's `.text-sm` utility — the rule
+     was here first and was silently overridden on all 13 controls. */
+
+  /* Respect reduced-motion for the drawer + spinners. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   /* Thin, dark scrollbars to match the aesthetic */
@@ -60,5 +86,65 @@
   }
   .dot-idle {
     @apply bg-ink-faint;
+  }
+}
+
+@layer utilities {
+  /* Safe-area helpers for the fixed chrome (header, drawer, bottom bars).
+     `viewport-fit=cover` is already set in index.html, which is what makes
+     env() resolve to non-zero on notched iPhones. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* Gutters that RESPECT the safe area instead of replacing it.
+     `px-4 px-safe` was a bug: both set padding-left/right, so the safe-area
+     utility (0px on a non-notched device) won and the gutter vanished
+     entirely — content sat flush against the screen edge. max() keeps the
+     designed gutter and only grows it where the inset is larger. */
+  .px-gutter {
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+  @media (min-width: 640px) {
+    .px-gutter {
+      padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
+      padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
+    }
+  }
+  .px-gutter-sm {
+    padding-left: max(0.5rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.5rem, env(safe-area-inset-right, 0px));
+  }
+  /* Horizontal scroll container that does NOT drag the page with it. */
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Not inside a @layer, and element+class specificity, so it beats the
+   `.text-sm` utility that every control carries. Below `lg` (touch
+   viewports) controls render at 16px, which is the threshold under which
+   iOS Safari zooms the page on focus — a zoom the user then has to pinch
+   back out of on every single form field. The 14px desktop size returns at
+   lg where there is no such behaviour. */
+@media (max-width: 1023px) {
+  input.text-sm,
+  textarea.text-sm,
+  select.text-sm,
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 }
