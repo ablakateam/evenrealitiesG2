@@ -213,7 +213,30 @@ async function stopAndTranscribe(ctx: PageContext): Promise<void> {
 /** Under ~125 ms of 16 kHz mono 16-bit PCM — nothing Whisper can use. */
 const MIN_PCM_BYTES = 2048;
 
+/**
+ * Dev-only capture mode: `?demo=1` forces the scripted transcription path.
+ *
+ * The simulator streams near-silent PCM, which the server's silence guard
+ * correctly rejects (422) — so the voice flow cannot be driven to a Confirm
+ * screen there at all. This flag skips STT and posts a known transcription,
+ * which is what store screenshots and demo recordings need. Gated behind
+ * import.meta.env.DEV alongside the fallback below, so it cannot ship.
+ */
+function demoMode(): boolean {
+  try {
+    return import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === '1';
+  } catch {
+    return false;
+  }
+}
+
 async function transcribe(): Promise<ComposeResult> {
+  if (demoMode()) {
+    return hudApi<ComposeResult>('/api/compose', {
+      method: 'POST',
+      body: { transcription: SIM_FALLBACK_TRANSCRIPTION },
+    });
+  }
   if (recorder.isEmpty || recorder.byteLength < MIN_PCM_BYTES) {
     // In a PACKED build this must be a hard error. The stock transcription
     // below composes a complete, plausible message ("running about ten
