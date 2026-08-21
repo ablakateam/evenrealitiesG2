@@ -17,6 +17,21 @@ echo "→ Building dashboard…"
 cd "$LOCAL_DIR"
 npm run build
 
+# Legal pages carry a SUPPORT_EMAIL placeholder in the repo (the PII
+# pre-commit guard blocks the real address). Substitute it here, the same
+# way hud/pack.sh substitutes the domain into app.json.
+if [ -f "${LOCAL_DIR}/../hud/.env" ]; then
+  set -a; . "${LOCAL_DIR}/../hud/.env"; set +a
+fi
+if [ -n "${VOX_SUPPORT_EMAIL:-}" ]; then
+  for f in "${LOCAL_DIR}"/dist/privacy/index.html "${LOCAL_DIR}"/dist/terms/index.html; do
+    [ -f "$f" ] && sed -i '' "s/SUPPORT_EMAIL/${VOX_SUPPORT_EMAIL}/g" "$f"
+  done
+  echo "→ support email substituted into legal pages"
+else
+  echo "⚠ VOX_SUPPORT_EMAIL unset — legal pages will show the placeholder" >&2
+fi
+
 echo "→ Deploying to ${SSH_TARGET}:${REMOTE_DIR}"
 ssh "${SSH_TARGET}" "mkdir -p ${REMOTE_DIR}"
 rsync -avz --delete "${LOCAL_DIR}/dist/" "${SSH_TARGET}:${REMOTE_DIR}/"

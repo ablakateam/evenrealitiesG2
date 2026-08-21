@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VOX — Privacy Policy</title>
+<meta name="description" content="How VOX handles your data. VOX is self-hosted: your messages never reach the developer's servers.">
+<link rel="stylesheet" href="/_legal.css">
+</head><body><div class="wrap">
+<header><span class="mark">VOX</span><span class="badge">G2</span></header>
+
+<h1>Privacy Policy</h1>
+<p class="eff">Effective 21 August 2026 · VOX for Even Realities G2 · com.ablaka.vox</p>
+
+<div class="callout">
+<p><strong>VOX is self-hosted.</strong> You run the VOX server yourself, on
+infrastructure you control, using credentials you supply. The developer
+(Ablaka) and Even Realities do not receive, store, or have any means of
+reading your messages, voice audio, or contacts. There is no VOX-operated
+backend between you and the services you configure.</p>
+</div>
+
+<h2>What is stored on the glasses</h2>
+<p>One value: the secret used to authenticate to your own VOX server, held
+in the Even Hub key-value store. Nothing else persists on the device — no
+messages, no audio, no contacts.</p>
+
+<h2>What is sent to your server</h2>
+<ul>
+<li>Voice audio captured while a recording screen is open (16 kHz PCM), sent over HTTPS.</li>
+<li>The resulting transcription, the parsed intent, and the message you approve.</li>
+<li>Inbound SMS bodies, delivered by a Twilio webhook you configured.</li>
+<li>Inbound email, retrieved from the IMAP account you configured.</li>
+<li>Contacts, templates, preferences and message history that you create.</li>
+</ul>
+<p>This data is stored in a database on your server. Credentials for
+third-party services are encrypted at rest (AES-256-GCM); the shared
+secret is stored only as an Argon2id hash.</p>
+
+<h2>Third parties your server contacts, using your credentials</h2>
+<ul>
+<li><strong>Twilio</strong> — sending and receiving SMS.</li>
+<li><strong>Your email provider</strong> — SMTP to send, IMAP to receive.</li>
+<li><strong>OpenAI</strong> — Whisper speech-to-text.</li>
+<li><strong>Your chosen model provider</strong> — Anthropic, OpenAI, OpenRouter or Ollama Cloud, for the tone rewrites.</li>
+</ul>
+<p>Each of these is a direct relationship between you and that provider,
+under their terms and privacy policy. VOX passes your data to them on your
+instruction and holds no copy beyond your own database.</p>
+
+<h2>Microphone</h2>
+<p>The microphone opens only while a recording screen is on the display,
+and closes as soon as you stop the recording or VOX loses focus. Audio is
+streamed to your server for transcription and is not retained on the
+glasses. VOX does not listen in the background and has no wake word.</p>
+
+<h2>Retention and deletion</h2>
+<p>Your data lives on your server for as long as you keep it running. You
+can delete individual records from the dashboard, or delete the server and
+its database, which removes everything at once. Neither the developer nor
+Even Realities holds a copy to delete.</p>
+
+<h2>Children</h2>
+<p>VOX is not directed at children under 13 and we do not knowingly
+collect information from them.</p>
+
+<h2>Changes</h2>
+<p>Material changes to this policy will be published on this page with a
+new effective date, and noted in the app's release notes.</p>
+
+<h2>Contact</h2>
+<p>Privacy questions: <a href="mailto:SUPPORT_EMAIL">SUPPORT_EMAIL</a></p>
+
+<footer><a href="/terms/">Terms of Use</a><a href="/">VOX dashboard</a></footer>
+</div></body></html>

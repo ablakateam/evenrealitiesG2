@@ -1,0 +1,29 @@
+/* Shared styling for the standalone legal pages. Deliberately not part of
+   the SPA bundle: these must be reachable without JavaScript, without a
+   passkey, and without loading the dashboard — an app-store reviewer or a
+   crawler should get plain readable text. */
+:root{--bg:#0a0b0d;--raised:#121316;--line:#26282d;--ink:#e8e9eb;--muted:#9aa0a6;--faint:#5f646b;--phos:#39ff6a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+.wrap{max-width:44rem;margin:0 auto;padding:max(1.25rem,env(safe-area-inset-top)) 1.25rem 4rem}
+@media(min-width:640px){.wrap{padding-left:2rem;padding-right:2rem}}
+header{display:flex;align-items:center;gap:.6rem;padding:1.5rem 0 2rem;border-bottom:1px solid var(--line);margin-bottom:2rem}
+.mark{font:700 1.05rem/1 ui-monospace,"JetBrains Mono",monospace;letter-spacing:.22em}
+.badge{font:600 .65rem/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--phos);background:rgba(57,255,106,.1);padding:.3rem .45rem;border-radius:4px}
+h1{font-size:1.6rem;line-height:1.25;margin:0 0 .4rem}
+.eff{color:var(--faint);font:.8rem/1.5 ui-monospace,monospace;margin:0 0 2rem}
+h2{font-size:1.05rem;margin:2.25rem 0 .6rem;color:var(--ink)}
+p,li{color:var(--muted)}
+p{margin:0 0 1rem}
+ul{margin:0 0 1rem;padding-left:1.15rem}
+li{margin-bottom:.4rem}
+strong{color:var(--ink);font-weight:600}
+a{color:var(--phos)}
+.callout{background:var(--raised);border:1px solid var(--line);border-left:2px solid var(--phos);
+  border-radius:8px;padding:1rem 1.1rem;margin:0 0 1.5rem}
+.callout p:last-child{margin-bottom:0}
+footer{margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--line);
+  color:var(--faint);font-size:.85rem;display:flex;gap:1.25rem;flex-wrap:wrap}
