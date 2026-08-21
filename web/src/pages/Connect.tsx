@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Spinner, InlineNote } from '@/components/ui';
+import { captureReturnTo } from '@/lib/returnTo';
 
 /**
  * /connect?t=<handoff> — passkey-free sign-in.
@@ -22,6 +23,8 @@ export function Connect() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Stash the companion's address before we navigate away from /connect.
+    captureReturnTo();
     const token = params.get('t');
     if (!token) {
       setError('This link is missing its code.');

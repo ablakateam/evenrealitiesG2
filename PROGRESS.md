@@ -249,7 +249,9 @@ loop. Ordered oldest → newest.
 
 | dashboard | *(pending)* | 2026-08-20 | **Mobile-responsive CRM.** `web/` had zero responsive breakpoints and rendered its 240 px sidebar unconditionally, so a 390 px iPhone got ~150 px of content. Rebuilt the shell (drawer + sticky top bar below `lg`, desktop rail unchanged), added safe-area-aware additive gutters, 44 px touch targets, 16 px inputs on touch viewports, two-line list rows in place of 5–6 column flex rows, 2-up stat grids, and a bottom-sheet Modal. Verified with Playwright at 320 / 390 / 844 / 1440 px. | Post-v0.1.19 feedback |
 
-**Current .ehpk:** `hud/vox.ehpk` (55714 bytes, whitelist points at
+| 0.1.20 | *(pending)* | 2026-08-21 | Companion passes a `?from=` return address when opening the dashboard, so the CRM can render a "Back to VOX" exit. Without it, opening the dashboard replaced the VOX WebView with no chrome and no way back (I-034). | Hardware feedback |
+
+**Current .ehpk:** `hud/vox.ehpk` (56393 bytes, whitelist points at
 the production origin baked in at build time via `hud/.env`).
 `min_sdk_version` deliberately stays at `0.0.13`: the build depends on
 0.0.14 for its **client-side** page validators, which run inside our own

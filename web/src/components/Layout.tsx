@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, ArrowLeft } from 'lucide-react';
 import { Sidebar, NavList, SidebarBrand, SignOutButton, NAV } from './Sidebar';
+import { getReturnTo, goBackToVox } from '@/lib/returnTo';
 
 /**
  * App shell.
@@ -48,6 +49,10 @@ export function Layout() {
   }, [open]);
 
   const current = NAV.find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)));
+  // Present only when the dashboard was opened FROM the VOX companion.
+  // Opened directly in a browser there is real chrome, and an app-drawn
+  // back button would be a dead end.
+  const returnTo = getReturnTo();
 
   return (
     <div className="flex h-full">
@@ -56,7 +61,17 @@ export function Layout() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile top bar */}
         <header className="sticky top-0 z-30 flex shrink-0 flex-col border-b border-line bg-bg/95 backdrop-blur pt-safe lg:hidden">
-          <div className="flex h-14 items-center gap-3 px-gutter-sm">
+          <div className="flex h-14 items-center gap-1 px-gutter-sm">
+            {returnTo && (
+              <button
+                type="button"
+                onClick={goBackToVox}
+                aria-label="Back to VOX"
+                className="grid h-touch w-touch shrink-0 place-items-center rounded-lg text-phos hover:bg-bg-inset"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setOpen(true)}
@@ -103,6 +118,17 @@ export function Layout() {
               </button>
             </div>
             <NavList onNavigate={() => setOpen(false)} />
+            {returnTo && (
+              <div className="shrink-0 border-t border-line px-3 py-2">
+                <button
+                  onClick={goBackToVox}
+                  className="flex min-h-touch w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-phos hover:bg-bg-inset"
+                >
+                  <ArrowLeft size={18} />
+                  Back to VOX
+                </button>
+              </div>
+            )}
             <SignOutButton onNavigate={() => setOpen(false)} />
           </div>
         </div>

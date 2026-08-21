@@ -519,13 +519,18 @@ function connectBlock(server: string, secret: string): HTMLElement {
         });
         const data = (await res.json()) as { token?: string };
         if (!res.ok || !data.token) throw new Error('could not create a connect code');
-        window.location.href = `${server}/connect?t=${encodeURIComponent(data.token)}`;
+        // Carry a return address. Opening the dashboard REPLACES this WebView
+        // — the Even Realities app draws no browser chrome around it, so
+        // without this the user lands somewhere with no way back to VOX.
+        const back = encodeURIComponent(window.location.href);
+        window.location.href =
+          `${server}/connect?t=${encodeURIComponent(data.token)}&from=${back}`;
       } catch (err) {
         // Falling back to the plain dashboard URL still works — it just asks
         // for the passkey, which is exactly the old behaviour.
         console.warn('[companion] handoff failed, opening dashboard directly:', err);
         status.textContent = "couldn't auto-connect — opening sign-in";
-        window.location.href = server;
+        window.location.href = `${server}/?from=${encodeURIComponent(window.location.href)}`;
       }
     })();
   });
