@@ -18,7 +18,7 @@
 
 ## Patterns to avoid (collected over time)
 
-- **Never hardcode operational PII in a committed file** — see the PII-scrub retro below. A public repo means every commit is forever-ish.
+- **Never hardcode operational PII in a committed file** — see the PII-scrub retro below. Every commit is forever-ish whatever the repo's visibility setting says today; visibility is one click, history is not. (The repo is in fact private — earlier entries here say public, which was wrong.)
 - **Don't reach for a dependency when ~30–60 LOC of plain TS does it** — fuzzy match, CSV parse, AES-GCM crypto all ended up hand-rolled and better for it.
 - **Don't both quote a heredoc delimiter AND backslash-escape `$`** — pick one.
 
