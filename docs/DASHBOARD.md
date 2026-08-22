@@ -78,60 +78,160 @@ unlimited access, forever, undetectably.
 
 ## What each page does
 
-| Page | Purpose |
-|---|---|
-| **Overview** | Server health, today's counts, recent activity, setup prompt if incomplete |
-| **Inbox** | Received SMS and email; open a thread, mark read |
-| **Contacts** | CRUD, favourites, search, CSV import. Phone numbers normalised to E.164 |
-| **Templates** | Reusable message bodies with ordering; 12 seeded on first run |
-| **Activity** | Full history with channel/direction filters, roll-up stats, CSV export |
-| **Integrations** | Per-provider credential cards with live test buttons; email account setup |
-| **Preferences** | 23 settings across five groups, auto-saved |
-| **Diagnostics** | Runs live checks against DB, Twilio, SMTP, IMAP and each model provider |
-| **Account** | Connect-device QR, reveal/rotate the shared secret, sign out |
-| **Setup wizard** (`/setup`) | Six steps: welcome → Twilio → email → AI → contacts → done |
+Screenshots below are from a local instance seeded with fictional data —
+no real contact, number or credential appears in any of them.
+
+### Overview
+
+<img src="images/crm-overview.png" alt="Overview: server status, today's counts, recent activity" width="820">
+
+The landing page, and the one screen that answers "is anything wrong?"
+without a click.
+
+- **Status** — service name, uptime, schema version and Node version, read
+  from `/api/health`. This is the only card that carries the animated
+  phosphor trace, because it is the only genuinely live surface. If the
+  server is unreachable the trace stops and the card says so.
+- **Today** — sent, failed, received, lifetime total, tokens consumed and
+  30-day cost. Figures are tabular so they do not reflow as digits change.
+- **Recent** — the last several messages, direction arrow, channel, contact
+  and status. Outbound and inbound are interleaved, newest first.
+
+If Twilio or a model provider is unconfigured, a **Finish setup** banner
+appears above everything and links to the wizard.
+
+### Inbox
+
+<img src="images/crm-inbox.png" alt="Inbox: received SMS and email with unread markers" width="820">
+
+Everything received, from both channels in one list. Inbound SMS arrives by
+Twilio webhook; inbound email by a persistent IMAP IDLE connection, so
+messages appear without polling.
+
+Unread items are marked; opening one shows the full body and marks it read,
+which clears the badge on the glasses too. The same records back the HUD
+inbox — this is a view onto the same table, not a copy.
 
 ### Contacts
 
-The compose pipeline needs these: contact names are injected into the intent
-prompt as grounding, so "text Alex" resolves to a real record rather than a
-guess. A contact with only a phone can receive SMS; only an email, email;
-both, either — and the review screen offers to switch.
+<img src="images/crm-contacts.png" alt="Contacts: names, numbers, addresses, favourites" width="820">
 
-CSV import takes `name,phone,email`.
+The address book, and **the reason voice compose can resolve a name at all**
+— contact names are injected into the intent prompt as grounding, so "text
+Alex" matches a record instead of guessing.
+
+- Phone numbers normalise to E.164 on save; a contact with no reachable
+  address is rejected rather than stored broken.
+- What each contact can receive is shown plainly — `both`, `phone`, `email`
+  — because that determines which channels the glasses will offer.
+- Favourites sort first. Search filters as you type. CSV import takes
+  `name,phone,email`.
 
 ### Templates
 
-Stored and ordered, exposed via the API. Not yet surfaced on the glasses —
-an honest gap rather than an undocumented feature.
+Reusable message bodies with explicit ordering; twelve are seeded on first
+run. Stored and exposed via the API.
+
+> Honest gap: templates are **not yet surfaced on the glasses.** They are
+> manageable here and readable through the API, but no HUD screen consumes
+> them.
+
+### Activity
+
+<img src="images/crm-activity.png" alt="Activity: roll-up statistics and a filterable message log" width="820">
+
+The full audit log — every send and receive, with the tone used and the
+delivery status.
+
+- **Roll-up** across the top: lifetime sent, received, failed, sent today,
+  tokens, 30-day cost.
+- Filter by channel and direction; export the filtered view as CSV.
+- Status carries the emphasis (`DELIVERED`, `FAILED`); the tone is a
+  footnote, because status is what you scan for.
+
+Delivery status updates in place as Twilio's callbacks arrive, so a message
+can move from `sent` to `delivered` after the fact.
 
 ### Integrations
 
-Credentials entered here are encrypted with `MASTER_KEY` and stored in the
-database, which takes precedence over environment variables. Each provider
-card has a **Test** button that performs a real round trip, so a bad key is
-caught at setup rather than mid-message.
+<img src="images/crm-integrations.png" alt="Integrations: per-provider credential cards with test buttons" width="820">
+
+Where credentials live. One card per provider — Twilio and the four model
+providers — plus the email account.
+
+- Credentials are encrypted with `MASTER_KEY` and stored in the database,
+  which **takes precedence over environment variables**. If a value here
+  and an env var disagree, this one wins.
+- Each card shows a masked hint of what is configured and its source
+  (`db` or `env`), never the secret itself.
+- **Test** performs a real round trip against the provider, so a bad key is
+  caught here rather than mid-message.
+- The email account is configured separately, with SMTP and IMAP host,
+  port and security. Gmail, Outlook and iCloud need an **app password**,
+  not your account password.
 
 ### Preferences
 
-Read by both surfaces. The ones that reach the glasses:
+<img src="images/crm-preferences.png" alt="Preferences: behaviour settings grouped into sections" width="820">
 
-| Setting | Effect |
+Behaviour, auto-saved as you change it. The settings that reach the glasses:
+
+| Setting | Effect on the glasses |
 |---|---|
-| `default_tone` | Style new messages start in; mirrored by the glasses Style menu |
-| `max_recording_seconds` | Hard cap on a recording |
-| `silence_autostop_seconds` | Silence before recording ends |
-| `voice_language` | Pinned language for speech recognition |
+| `default_tone` | The style new messages start in. The same value the HUD Style menu writes. |
+| `voice_language` | Language pinned for speech recognition. |
+| `max_recording_seconds` | Hard cap on one recording. |
+| `silence_autostop_seconds` | Silence before recording ends; `0` disables. |
+| `rewrite_provider` / `rewrite_model` | Which model parses intent and writes the rewrites. |
 
-`voice_language` defaults to `en`, not auto-detect. Left to choose,
-`whisper-1` on marginal audio will confidently return another language —
-English speech coming back as Japanese was a real reported bug. Set it to a
-specific language, or to `auto` if you genuinely need multilingual and
-accept that failure mode.
+**`voice_language` defaults to `en`, not auto-detect.** Given a free choice
+on marginal audio, `whisper-1` will confidently return another language —
+English in, Japanese out was a real reported bug. Set a specific language,
+or `auto` if you genuinely need multilingual and accept that failure mode.
+
+Remaining settings — daily limits, quiet hours, notification filters — are
+stored and editable, but not all are consumed by the glasses yet.
+
+### Diagnostics
+
+<img src="images/crm-diagnostics.png" alt="Diagnostics: live checks against every dependency" width="820">
+
+One button that exercises every dependency: database, Twilio, SMTP, IMAP and
+each configured model provider. Each check reports pass/fail with the
+upstream error where there is one.
+
+This is the fastest way to answer "is it VOX or is it the provider?", and
+the first thing to run when something stops working.
+
+### Account
+
+Pairing and access.
+
+- **Connect another device** — a QR containing a single-use handoff URL with
+  a live countdown. Scanning it from a laptop signs that browser in once.
+  It does **not** contain your passkey.
+- **Shared secret** — masked, revealable, rotatable. Rotating invalidates
+  the old secret immediately; the glasses app must be repacked with the new
+  one or it stops authenticating.
+- **Sign out** clears the stored secret from this browser.
+
+### Setup wizard (`/setup`)
+
+Six steps for a fresh install: welcome → Twilio → email account → AI
+provider → contacts import → done. Each step saves and tests before
+advancing, so you find out a credential is wrong at the step that owns it.
+
+---
 
 ---
 
 ## Mobile
+
+<p>
+<img src="images/crm-mobile-overview.png" alt="Overview on a 390px phone viewport" width="270">
+<img src="images/crm-mobile-nav.png" alt="Navigation drawer open on mobile" width="270">
+<img src="images/crm-mobile-contacts.png" alt="Contacts on a phone viewport" width="270">
+</p>
 
 The dashboard is used primarily on a phone, because that is where the
 companion's **Open dashboard** button leads. It is built mobile-first:

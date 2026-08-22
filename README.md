@@ -133,7 +133,18 @@ typing anything, using a single-use token that expires in three minutes.
 
 The dashboard — contacts, templates, integrations, history, diagnostics,
 preferences — is a React SPA served from the same domain, built mobile-first
-because that is where it is actually used. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
+because that is where it is actually used.
+
+<img src="docs/images/crm-overview.png" alt="The VOX dashboard: server status, today's counts and recent activity" width="820">
+
+<sub>Seeded with fictional data. Every tab is walked through in
+<a href="docs/DASHBOARD.md">docs/DASHBOARD.md</a>.</sub>
+
+It is not a separate product and needs no separate deployment: it is a
+static bundle calling the **same** `/api/*` endpoints the glasses call, with
+the same bearer secret. That is why a message style set on the glasses shows
+up here immediately, and the reverse — both surfaces read one `preferences`
+row, so there is nothing to synchronise.
 
 ---
 
