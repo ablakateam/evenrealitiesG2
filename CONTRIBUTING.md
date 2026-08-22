@@ -83,11 +83,11 @@ it fires, fix the source; do not bypass it. It has caught real leaks.
 [docs/](docs/) describes, update it in the same commit. Do not document
 functionality that does not exist.
 
-**Record surprises.** Platform quirks go in
-[LESSONSLEARNED.md](LESSONSLEARNED.md) with the symptom, the cause and the
-fix. Defects get an ID in [ISSUES.md](ISSUES.md). Both files exist because
-this platform fails in ways that are not obvious from its documentation, and
-re-learning them is expensive.
+**Record surprises.** Platform quirks belong in
+[docs/EVEN_REALITIES.md](docs/EVEN_REALITIES.md), with the symptom, the
+cause and the fix. This platform fails in ways that are not obvious from its
+documentation, and re-learning them is expensive — a one-line note costs
+minutes, rediscovering it costs days.
 
 ## Things worth knowing before touching the glasses code
 

@@ -58,9 +58,11 @@ STORE_LISTING.md
 even hub screens/
 qpp screens/
 
-# Simulator/device captures. These render real contact names, phone numbers
-# and email addresses straight onto the glasses frame, and the pre-commit PII
-# guard greps text — it cannot see PII baked into a PNG. Keep them local.
+# Raw simulator/device captures. These render real contact names, phone
+# numbers and email addresses straight onto the glasses frame, and the
+# pre-commit PII guard greps text — it cannot see PII baked into a PNG.
+# Keep them local. Vetted, fictional-data captures for the README live in
+# docs/images/ and ARE tracked.
 screenshots/
 
 # Local copy of Even Realities' own documentation (scraped for offline
@@ -70,3 +72,11 @@ even-realities-docs.txt
 # Session journals. Narrative build history kept locally — contains real
 # contact details from testing that the PII guard would (correctly) block.
 DEV/
+
+# Internal working journals — phase tracking, retros, issue log, original
+# brief. Useful to the maintainers, noise to everyone else. Kept locally.
+PROGRESS.md
+LESSONSLEARNED.md
+ISSUES.md
+RFP.md
+PHASES.md

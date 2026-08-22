@@ -174,7 +174,7 @@ Server-Sent Events. Emits `hello` on connect, then `new` and `read` events,
 with a heartbeat every 25 s. Requires `proxy_buffering off` in Nginx.
 
 > Known gap: inbound **email** publishes to this stream; inbound **SMS**
-> does not yet. Tracked as I-020 in [ISSUES.md](../ISSUES.md).
+> does not yet.
 
 ### `GET /api/idle-suggestions`
 

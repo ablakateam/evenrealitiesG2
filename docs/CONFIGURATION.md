@@ -107,8 +107,8 @@ language — English speech coming back as Japanese was a real reported bug.
 Set a specific language, or `auto` if you need multilingual and accept that.
 
 Remaining settings — daily limits, quiet hours, notification filters, smart
-toggles — are stored and editable but not all are consumed yet.
-[ISSUES.md](../ISSUES.md) is the honest record of which.
+toggles — are stored and editable, but not all are consumed by the
+glasses yet.
 
 ---
 

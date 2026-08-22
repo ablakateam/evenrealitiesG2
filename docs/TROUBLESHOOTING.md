@@ -115,7 +115,7 @@ Integrations → Email account → Test.
 ### Inbox shows thousands of unread
 
 Expected on a first connection: the IMAP worker backfills the entire
-mailbox. Known issue I-004 / I-019. The glasses badge caps at "99+".
+mailbox as unread. A known limitation; the glasses badge caps at "99+".
 
 ### Inbox stops updating
 

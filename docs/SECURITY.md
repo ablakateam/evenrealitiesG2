@@ -60,8 +60,7 @@ scanned blob-by-blob against the live secret values: zero hits.
 
 ## Known limitations
 
-Listed here rather than omitted. Each is tracked in
-[ISSUES.md](../ISSUES.md).
+Listed here rather than omitted.
 
 ### The shared secret is embedded in the `.ehpk` — must fix before public release
 
@@ -80,19 +79,19 @@ the dashboard if an `.ehpk` is ever shared.
 ### The server runs as root
 
 pm2 runs `vox-server` as root on the VPS. It should run as an unprivileged
-`vox` user with ownership limited to `/opt/vox`. (I-001)
+`vox` user with ownership limited to `/opt/vox`.
 
 ### Bearer verification cost
 
 `requireAuth` runs Argon2id on every authenticated request — roughly
 30–50 ms added to each call, and O(n) in users. Correct, but a short-lived
-verified-token cache would be better. (I-022)
+verified-token cache would be better.
 
 ### Inbound SMS is not deduplicated
 
 Twilio retries on timeout. There is no uniqueness constraint on `MessageSid`,
 so a retry inserts a duplicate inbox row. Not a disclosure issue; a data
-integrity one. (I-020, I-005)
+integrity one.
 
 ### Third-party data handling
 

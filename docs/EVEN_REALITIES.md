@@ -194,12 +194,10 @@ a network call that works in the simulator can still be blocked on hardware.
 
 ## Capabilities available but not adopted
 
-Tracked as O-001…O-005 in [ISSUES.md](../ISSUES.md).
-
 | Capability | Status |
 |---|---|
 | `LONG_PRESS_EVENT` (0.0.14) | Not used. Would enable hold-to-talk — no manifest change needed. |
 | OS contextual menus (0.0.14) | Not used. Needs firmware + app 2.2.9, so `min_app_version` would have to rise. |
 | `textColor` 0–4 (0.0.14) | Not used. Would give real hierarchy; note the range is 0–4, not the 0–15 our palette assumes. |
 | `zOrderIndex` | Not used. Overlays without a rebuild. All-or-none, unique per page. |
-| `ImageContainerProperty` | Not used. Byte format for 4-bit green is undocumented (I-009). |
+| `ImageContainerProperty` | Not used. The byte format for 4-bit green is undocumented. |
