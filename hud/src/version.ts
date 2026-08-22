@@ -9,7 +9,7 @@
  * payload hard-coded '0.1.0' (so every crash report was mislabelled) and the
  * companion hard-coded its own copy. One constant, imported everywhere.
  */
-export const APP_VERSION = '0.1.21';
+export const APP_VERSION = '0.1.22';
 
 /** The @evenrealities/even_hub_sdk version this bundle was built against. */
 export const SDK_VERSION = '0.0.14';

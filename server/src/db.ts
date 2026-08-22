@@ -248,6 +248,50 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    description: 'devices + pairing_codes — per-install credentials, no embedded secret in the app bundle',
+    up: (db) => {
+      db.exec(`
+        -- One row per paired installation. A device secret authenticates
+        -- exactly like a user shared secret, but is independently revocable
+        -- and carries no ability to mint further credentials.
+        CREATE TABLE devices (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          secret_hash TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_seen_at TEXT,
+          revoked_at TEXT
+        );
+        CREATE INDEX idx_devices_user ON devices(user_id);
+
+        -- Short-lived pairing codes. Minted by an authenticated dashboard,
+        -- redeemed ONCE by an unauthenticated app. Only the hash is stored,
+        -- so a database read cannot replay a live code.
+        CREATE TABLE pairing_codes (
+          code_hash TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          label TEXT,
+          expires_at TEXT NOT NULL,
+          used_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_pairing_codes_expiry ON pairing_codes(expires_at);
+
+        -- Brute-force guard for the unauthenticated claim endpoint. Keyed by
+        -- client IP rather than user_id, so it cannot use rate_limit_state
+        -- (that table has an FK to users).
+        CREATE TABLE pair_attempts (
+          client_key TEXT NOT NULL,
+          window_start TEXT NOT NULL,
+          count INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (client_key, window_start)
+        );
+      `);
+    },
+  },
 ];
 
 function runMigrations(db: Database.Database): void {

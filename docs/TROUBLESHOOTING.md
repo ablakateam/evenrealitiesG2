@@ -31,11 +31,36 @@ invitation is **Active**, not **Invited**; force-quit and reopen the Even
 Realities app. If an update still will not appear, uninstall VOX on the
 phone and install fresh — that bypasses version comparison entirely.
 
-### "Not paired" on every launch
+### "Not paired yet" on the glasses
 
-`hud/.env` was missing or incomplete when `pack.sh` ran, so no server was
-inlined. Confirm all three of `VOX_DOMAIN`, `VITE_VOX_SERVER` and
-`VITE_VOX_SECRET` are set, repack, reinstall.
+Expected on a fresh install — the app ships with no credential. Open VOX on
+your phone, paste a pairing link from Account → Pair your glasses, then tap
+once on the glasses to re-check.
+
+If it returns after pairing succeeded, the credential did not persist. The app
+reports this explicitly ("the credential did not persist on this device")
+because it reads the value back after writing it. Generate a fresh code and
+retry — the previous one is already burned.
+
+### "That pairing code is not valid, has expired, or was already used"
+
+One message covers all three deliberately, so the endpoint cannot be used to
+discover which codes exist. In practice it is almost always the ten-minute TTL
+or a code already redeemed. Generate a new one.
+
+### "Too many pairing attempts"
+
+Twenty claim attempts per hour per IP. Wait for the hour to roll over. This
+limiter fails closed, so it can also trigger if the database is unwritable —
+check `pm2 logs vox-server` for `pair attempt metering failed`.
+
+### Pairing fails with "Could not reach &lt;host&gt;"
+
+Either the address is wrong, the server is down, or the domain is not in the
+build's network whitelist. The Even Realities App blocks non-whitelisted
+domains before any traffic leaves the WebView, and wildcards are not
+supported — so a build packed for one domain cannot talk to another. Confirm
+`VOX_DOMAIN` matched the server you are pairing to when `pack.sh` ran.
 
 ### The app launches, then immediately opens the microphone
 

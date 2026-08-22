@@ -58,34 +58,53 @@ scanned blob-by-blob against the live secret values: zero hits.
 
 ---
 
+### No credential in the distributed app
+
+The `.ehpk` contains no server address and no secret. `pack.sh` clears
+`VITE_VOX_SECRET` before building, then greps `dist/` for the value and
+**refuses to pack** if it is present — the check exists because clearing the
+shell variable is not sufficient on its own (Vite reads `hud/.env` directly, so
+the value comes back unless a higher-precedence override clears it).
+
+This matters because an `.ehpk` offers no protection of its own. The container
+is zstd-compressed, not encrypted — there is no cipher anywhere in the packer —
+so anything embedded in the bundle is readable by anyone holding the file.
+
+An install gets its credential by pairing instead:
+
+| Step | Endpoint | Auth |
+|---|---|---|
+| Dashboard mints a code | `POST /api/pair/code` | User secret. **Device secrets are refused** (403) so a compromised install cannot enrol more devices. |
+| App redeems it | `POST /api/pair/claim` | None — the caller has no credential yet. Per-IP hourly limit; the code is verified and burned in one transaction. |
+| App authenticates | any route | The per-device secret returned once by the claim. |
+| Owner revokes | `DELETE /api/devices/:id` | User secret. Takes effect on the next request; other devices are unaffected. |
+
+Only the SHA-256 of a pairing code is stored, so reading the database cannot
+replay a live code. Missing, expired and already-used codes return an identical
+message, so the endpoint is not an oracle for which codes exist.
+
+The client verifies the credential persisted by reading it back after writing.
+The code is already burned at that point, so a silent storage failure would
+otherwise leave the app unpaired with no explanation.
+
+---
+
 ## Known limitations
 
 Listed here rather than omitted.
 
-### The shared secret is embedded in the `.ehpk` — must fix before public release
+### Bearer verification is O(users + devices)
 
-`hud/.env` supplies `VITE_VOX_SECRET`, which Vite inlines at build time. It
-is a plain string inside the packed bundle. Anyone who obtains the `.ehpk`
-can extract it and gain full API access.
-
-This is acceptable **only** for a Private/Beta build that only the developer
-can download. It must be replaced with a real pairing flow — a device-scoped
-credential issued at pair time and revocable per device — before any public
-Production listing.
-
-*Mitigation today:* keep the build on Private/Beta; rotate the secret from
-the dashboard if an `.ehpk` is ever shared.
+`requireAuth` runs Argon2id against each user secret, then each unrevoked
+device secret, until one verifies. Correct, and constant-time per comparison,
+but it adds roughly 30–50 ms per comparison and the cost grows with the number
+of paired devices. Fine at single-tenant scale; a short-lived verified-token
+cache would be the fix if it ever isn't.
 
 ### The server runs as root
 
 pm2 runs `vox-server` as root on the VPS. It should run as an unprivileged
 `vox` user with ownership limited to `/opt/vox`.
-
-### Bearer verification cost
-
-`requireAuth` runs Argon2id on every authenticated request — roughly
-30–50 ms added to each call, and O(n) in users. Correct, but a short-lived
-verified-token cache would be better.
 
 ### Inbound SMS is not deduplicated
 
@@ -134,8 +153,13 @@ git log -p --all | grep -nE 'sk-[A-Za-z0-9]{20,}|AC[0-9a-f]{32}|BEGIN .*PRIVATE 
 
 At the last audit all three packages reported **0 production
 vulnerabilities**, and the history scan found no live credential. The only
-secret-shaped string in history is `sk-ant-test-key-1234567890`, a test
-fixture in `server/test/llm.test.ts`.
+secret-shaped string in history is an obviously-fake Anthropic-style key (an
+`sk-ant-` prefix followed by `test-key` and a digit run) used as a fixture in
+`server/test/llm.test.ts`.
+
+The literal is deliberately not reproduced here: `.githooks/pre-commit` blocks
+`sk-` shaped strings, so spelling it out would make this very file unstageable
+— which is precisely the guard working as intended.
 
 ---
 

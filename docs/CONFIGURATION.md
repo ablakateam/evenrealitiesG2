@@ -71,8 +71,8 @@ strings inside the packed `.ehpk`. See [SECURITY.md](SECURITY.md).
 | Variable | Required | Notes |
 |---|---|---|
 | `VOX_DOMAIN` | Yes | Bare hostname. `pack.sh` substitutes it into `app.json`'s network whitelist — without it the glasses cannot reach the server at all. |
-| `VITE_VOX_SERVER` | Yes | Full origin used at runtime |
-| `VITE_VOX_SECRET` | Yes | Shared secret sent as `Authorization: Bearer` |
+| `VITE_VOX_SERVER` | No | Dev convenience only. `pack.sh` clears it so the packed bundle carries no address; `npm run dev` still uses it. |
+| `VITE_VOX_SECRET` | No | Dev convenience only. `pack.sh` clears it **and refuses to pack if it survives into `dist/`**. Production installs get a credential by pairing. |
 | `VOX_SUPPORT_EMAIL` | No | Substituted into the hosted legal pages by `web/deploy.sh` |
 
 Changing any of these requires `bash pack.sh` and a re-upload.
@@ -115,11 +115,22 @@ glasses yet.
 ## Rotating the shared secret
 
 1. Dashboard → Account → rotate. The new value is shown **once**.
-2. Update `VITE_VOX_SECRET` in `hud/.env`.
-3. `bash hud/pack.sh`, re-upload, reinstall.
+2. Store it wherever you keep the dashboard credential.
 
-The old secret stops working immediately. Skipping step 2 leaves the
-installed glasses build unable to authenticate.
+The old secret stops working immediately.
 
-Existing dashboard handoff tokens keep working: the secret is captured at
+Rotating does **not** disturb paired glasses. Device credentials are separate
+rows with their own hashes, so they keep authenticating — which is the point of
+pairing. To cut off one install, revoke it under Account → Pair your glasses
+rather than rotating.
+
+Existing dashboard handoff tokens also keep working: the secret is captured at
 mint time and stored encrypted on the row.
+
+---
+
+## Revoking a paired device
+
+Account → Pair your glasses → **Revoke**. The credential stops authenticating
+on that device's next request; every other device is untouched. Re-pairing
+needs a fresh code — codes are single use and last ten minutes.

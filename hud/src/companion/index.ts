@@ -16,6 +16,13 @@
  */
 
 import { EMBEDDED_CONFIG } from '../embedded-config.js';
+import { getPairing, type Pairing } from '../kvs.js';
+import { parsePairingLink, claimPairing, PairingError } from '../pairing.js';
+
+/** Origin of the paired server. Set once renderCompanion resolves a pairing;
+ *  the paint* helpers read it to build dashboard links without taking it as
+ *  a parameter each. */
+let pairedServer = '';
 import { APP_VERSION, SDK_VERSION } from '../version.js';
 
 
@@ -125,7 +132,7 @@ function eyebrowStyle(): string {
 
 /* --- root shell + boot -------------------------------------------------- */
 
-export function renderCompanion(root: HTMLElement): void {
+export async function renderCompanion(root: HTMLElement): Promise<void> {
   injectStyles();
   root.innerHTML = '';
   // Set `display` explicitly. index.html styles #app as a centred flexbox
@@ -154,11 +161,16 @@ export function renderCompanion(root: HTMLElement): void {
     padding: 0;
   `;
 
-  const { server, secret } = EMBEDDED_CONFIG;
-  if (!server || !secret) {
-    root.appendChild(unpairedScreen());
+  // Resolve the credential from KVS first — a paired install always wins over
+  // whatever the bundle was built with. A public build has no embedded config
+  // at all, so this is the only source.
+  const pairing = await resolvePairing();
+  if (!pairing) {
+    root.appendChild(pairingScreen(() => renderCompanion(root)));
     return;
   }
+  const { server, secret } = pairing;
+  pairedServer = server;
 
   const wrap = el('div', {
     style: `
@@ -354,7 +366,7 @@ function paintStatus(status: IdleStatus, integrations: IntegrationView[]): void 
   );
   top.appendChild(
     el('a', {
-      href: `${EMBEDDED_CONFIG.server ?? window.location.origin}/integrations`,
+      href: `${pairedServer}/integrations`,
       style: `font-size: 12px; opacity: 0.6; color: inherit; text-decoration: none;`,
       text: 'manage →',
     }),
@@ -844,22 +856,133 @@ function footerBlock(server: string): HTMLElement {
 
 /* --- unpaired ----------------------------------------------------------- */
 
-function unpairedScreen(): HTMLElement {
-  const div = el('div', {
+/**
+ * Resolve the credential this install should use.
+ *
+ * KVS first: a pairing the user completed always wins. EMBEDDED_CONFIG is the
+ * fallback for development builds that still bake values in via hud/.env —
+ * the public .ehpk is built with those unset, so this returns null there and
+ * the pairing screen takes over.
+ */
+async function resolvePairing(): Promise<Pairing | null> {
+  const stored = await getPairing();
+  if (stored) return stored;
+  const { server, secret } = EMBEDDED_CONFIG;
+  if (server && secret) return { server, secret };
+  return null;
+}
+
+/**
+ * First-run pairing screen.
+ *
+ * This is the phone surface, so it is the only place in VOX with a keyboard —
+ * the glasses have click, scroll and long-press and nothing else. Everything
+ * pairing needs to accept typed input therefore lives here, and the HUD shows
+ * a "pair on your phone" card instead.
+ */
+function pairingScreen(onPaired: () => void): HTMLElement {
+  const wrap = el('div', {
     style: `
       min-height: 100vh; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      padding: 32px; text-align: center;
+      justify-content: center; padding: 32px 20px; box-sizing: border-box;
+      max-width: 520px; margin: 0 auto; width: 100%;
     `,
   });
-  div.appendChild(el('div', { style: `font-size: 40px; font-weight: 700;`, text: 'VOX' }));
-  div.appendChild(
-    el('p', {
-      style: `margin-top: 12px; opacity: 0.7; max-width: 320px; font-size: 15px;`,
-      text: 'Not paired yet. Finish setup on the VOX dashboard to connect this install.',
+
+  wrap.appendChild(
+    el('div', {
+      style: `font-family:${MONO}; font-size: 11px; letter-spacing:.18em;
+              text-transform: uppercase; opacity:.55;`,
+      text: 'Setup',
     }),
   );
-  return div;
+  wrap.appendChild(
+    el('div', { style: `font-size: 34px; font-weight: 700; margin-top: 6px;`, text: 'Connect VOX' }),
+  );
+  wrap.appendChild(
+    el('p', {
+      style: `margin-top: 10px; opacity:.7; font-size: 15px; line-height: 1.5;`,
+      text:
+        'VOX runs on a server you host, so nothing you send passes through anyone ' +
+        "else's infrastructure. Open your VOX dashboard, generate a pairing link, " +
+        'and paste it here.',
+    }),
+  );
+
+  const input = document.createElement('input');
+  input.type = 'url';
+  input.inputMode = 'url';
+  input.autocapitalize = 'off';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.placeholder = 'https://your-server/p/ABCD-1234';
+  input.style.cssText = `
+    margin-top: 22px; width: 100%; box-sizing: border-box;
+    padding: 14px 14px; border-radius: 10px;
+    border: 1px solid rgba(57,255,106,.35); background: rgba(0,0,0,.35);
+    color: inherit; font-family:${MONO}; font-size: 16px;
+  `;
+  wrap.appendChild(input);
+
+  const status = el('div', {
+    style: `margin-top: 12px; min-height: 20px; font-size: 14px; line-height:1.4;`,
+  });
+  wrap.appendChild(status);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Pair this device';
+  button.style.cssText = `
+    margin-top: 8px; width: 100%; padding: 15px; border-radius: 10px;
+    border: 1px solid rgba(57,255,106,.5); background: rgba(57,255,106,.12);
+    color: inherit; font-family:${MONO}; font-size: 15px; font-weight: 600;
+    letter-spacing: .04em; cursor: pointer; min-height: 48px;
+  `;
+  wrap.appendChild(button);
+
+  wrap.appendChild(
+    el('p', {
+      style: `margin-top: 20px; opacity:.5; font-size: 13px; line-height:1.5;`,
+      text:
+        "Don't have a server yet? The README at github.com/ablakateam/evenrealitiesG2 " +
+        'walks through deploying one.',
+    }),
+  );
+
+  const setStatus = (text: string, tone: 'error' | 'busy' | 'ok'): void => {
+    status.textContent = text;
+    status.style.color =
+      tone === 'error' ? '#ff8a8a' : tone === 'ok' ? 'rgba(57,255,106,.95)' : 'inherit';
+    status.style.opacity = tone === 'busy' ? '.7' : '1';
+  };
+
+  const submit = async (): Promise<void> => {
+    const parsed = parsePairingLink(input.value);
+    if (!parsed) {
+      setStatus('That does not look like a pairing link. It ends in /p/ and an 8-character code.', 'error');
+      return;
+    }
+    button.disabled = true;
+    setStatus(`Connecting to ${parsed.server.replace(/^https?:\/\//, '')}…`, 'busy');
+    try {
+      await claimPairing(parsed.server, parsed.code);
+      setStatus('Paired. Loading your dashboard…', 'ok');
+      onPaired();
+    } catch (err) {
+      setStatus(
+        err instanceof PairingError ? err.message : 'Pairing failed. Generate a fresh code and try again.',
+        'error',
+      );
+      button.disabled = false;
+    }
+  };
+
+  button.addEventListener('click', () => void submit());
+  input.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') void submit();
+  });
+
+  return wrap;
 }
 
 /* --- tiny helpers ------------------------------------------------------- */

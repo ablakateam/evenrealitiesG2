@@ -48,8 +48,12 @@ not).
 If the app has no server configured, every launch shows:
 
 ```
-              Not paired.
-     Open VOX on your phone to pair.
+   VOX runs on a server you host,
+   so this app ships with no
+   credentials of its own.
+
+   On your phone: open VOX and
+   paste your pairing link.
 ```
 
 ---
@@ -314,7 +318,7 @@ and do not change this default.
 
 | Situation | What you see |
 |---|---|
-| No server configured | "Not paired. Open VOX on your phone to pair." |
+| No credential yet | The *not paired yet* card. A tap re-checks storage and, once the phone has paired, continues to the home screen. |
 | Server unreachable | Status bar shows `TWL o  MAIL o`; the failing screen states the error |
 | Microphone captured nothing | "I didn't hear anything." — retry on tap |
 | Speech not parseable as a message | "Couldn't read that as a message" with what was heard |

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
+import { PairGlasses } from '@/components/PairGlasses';
 import { Card, CardBody, CardHeader, CardTitle, PageHeading, Button, Spinner, Modal, InlineNote } from '@/components/ui';
 import { apiGet, apiPost, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -73,7 +74,10 @@ export function Account() {
     <>
       <PageHeading eyebrow="Access" title="Account" subtitle="Pairing, secret rotation, sign out" />
 
-      {/* Pairing QR */}
+      {/* Glasses pairing — issues per-device credentials */}
+      <PairGlasses />
+
+      {/* Dashboard sign-in QR */}
       <Card className="mb-3">
         <CardHeader>
           <CardTitle>Connect another device</CardTitle>

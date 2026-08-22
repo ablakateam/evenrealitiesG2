@@ -207,12 +207,17 @@ the first thing to run when something stops working.
 
 Pairing and access.
 
+- **Pair your glasses** — creates a ten-minute, single-use pairing link,
+  shown as a QR and as text you can copy. Paste it into VOX on your phone to
+  connect an install. Below it, every paired device with its last-seen time
+  and a **Revoke** button. Revoking cuts off that install alone.
 - **Connect another device** — a QR containing a single-use handoff URL with
   a live countdown. Scanning it from a laptop signs that browser in once.
-  It does **not** contain your passkey.
-- **Shared secret** — masked, revealable, rotatable. Rotating invalidates
-  the old secret immediately; the glasses app must be repacked with the new
-  one or it stops authenticating.
+  It does **not** contain your passkey. This is for *browsers*; use *Pair your
+  glasses* for the app.
+- **Shared secret** — masked, revealable, rotatable. Rotating invalidates the
+  old secret immediately, but **does not affect paired glasses** — device
+  credentials are separate rows. To cut off an install, revoke it above.
 - **Sign out** clears the stored secret from this browser.
 
 ### Setup wizard (`/setup`)

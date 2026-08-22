@@ -28,6 +28,10 @@ Generated from `server/src/routes/`.
 | `GET /api/account` | Bearer | — |
 | `POST /api/account/rotate-secret` | Bearer | — |
 | `POST /api/auth/handoff` | Bearer | handoff 120/h |
+| `POST /api/pair/code` | Bearer (user secret only) | — |
+| `POST /api/pair/claim` | **None** | 20/h per IP |
+| `GET /api/devices` | Bearer | — |
+| `DELETE /api/devices/:id` | Bearer | — |
 | `POST /api/auth/handoff/exchange` | none | — |
 | `POST /api/compose` | Bearer | rewrite 1200/h |
 | `GET /api/config` | Bearer | — |
@@ -167,6 +171,50 @@ Only `sha256(token)` is stored. The secret is captured from the minting
 request's `Authorization` header and stored AES-256-GCM encrypted on the row,
 so handoff keeps working after a secret rotation. The row is marked used in
 the same transaction as the read, so two racing exchanges cannot both win.
+
+### `POST /api/pair/code` → `POST /api/pair/claim`
+
+How an app with no credential gets one. This is the only unauthenticated
+credential-issuing path in VOX, so the constraints are worth stating.
+
+```jsonc
+// POST /api/pair/code    (dashboard, user secret)
+{ "label": "Work glasses" }
+→ { "code": "ABCD-2345",
+    "url": "https://vox.example.com/p/ABCD2345",
+    "server": "https://vox.example.com",
+    "expires_at": "...", "expires_in": 600 }
+
+// POST /api/pair/claim   (unpaired app, NO auth — it has no credential yet)
+{ "code": "ABCD-2345", "device_name": "VOX glasses" }
+→ { "secret": "...", "server": "https://vox.example.com",
+    "device_id": 3, "name": "VOX glasses" }
+```
+
+The `url` carries both halves the app needs — origin says *which server*, path
+says *which code*. A bare code could not work: the app has no server address
+baked in, and resolving a code to a host would need a central directory that
+self-hosted VOX deliberately does not have.
+
+- Only `sha256(code)` is stored. Reading the database cannot replay a live code.
+- Read and burn happen in one transaction, so two apps racing the same code
+  cannot both get a credential.
+- Missing, expired and already-used all return the same message — the endpoint
+  does not reveal which codes exist.
+- `POST /api/pair/code` **rejects device secrets with 403**. A compromised
+  install cannot enrol further installs.
+- The claim limiter fails *closed*. Unlike ordinary rate limiting, a metering
+  error here would turn an unauthenticated endpoint into an unmetered guessing
+  oracle.
+
+Codes accept lower case, hyphens and spaces, and map the Crockford confusables
+(`I`/`L` → `1`, `O` → `0`), so a code read off a screen by eye still matches.
+
+### `GET /api/devices` · `DELETE /api/devices/:id`
+
+Paired installs, and revocation. Device rows never expose a secret or its hash.
+Revoking sets `revoked_at`; `requireAuth` only considers unrevoked rows, so the
+credential stops working on the next request and no other device is affected.
 
 ### `GET /api/inbox/stream`
 

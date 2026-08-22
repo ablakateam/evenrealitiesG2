@@ -10,6 +10,7 @@ import {
 } from './kvs.js';
 import { hudApi } from './api.js';
 import { renderCompanion } from './companion/index.js';
+import { NotPairedPage } from './pages/not-paired.js';
 import { hydratePrefs } from './prefs.js';
 import { APP_VERSION } from './version.js';
 
@@ -57,11 +58,11 @@ async function main(): Promise<void> {
   //    launches the HTML is invisible — cheap to render either way.
   const root = document.getElementById('app');
   if (root) {
-    try {
-      renderCompanion(root);
-    } catch (err) {
+    // renderCompanion is async now (KVS reads are async), so a try/catch here
+    // would not see a rejection — attach it to the promise instead.
+    void renderCompanion(root).catch((err) => {
       console.warn('[vox-hub] companion render failed:', err);
-    }
+    });
   }
 
   // 2. Try to bring up the glasses bridge. In a plain browser (no host SDK)
@@ -152,7 +153,14 @@ async function main(): Promise<void> {
   // rather than flashing a default and correcting itself a moment later.
   if (paired) await hydratePrefs();
 
-  await router.go(paired && !seenCue ? VoiceCuePage : IdlePage);
+  // An unpaired install has no server to call, so Idle would render a menu
+  // whose every entry fails. Send it to the pairing explainer instead.
+  if (!paired) {
+    await router.go(NotPairedPage);
+    return;
+  }
+
+  await router.go(seenCue ? IdlePage : VoiceCuePage);
 }
 
 main().catch((err) => {

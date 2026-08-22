@@ -113,6 +113,49 @@ backoff (5 s → 15 s → 60 s → 5 m → 15 m → 60 m).
 
 ---
 
+## Request flow: pairing a device
+
+The distributed `.ehpk` carries no server address and no credential, so the
+first thing a fresh install needs is both. This is the only unauthenticated
+credential-issuing path in the system.
+
+```
+dashboard (holds the user secret)
+  │  POST /api/pair/code           Bearer <user secret>
+  │  · device secrets REJECTED (403) — a compromised install
+  │    must not be able to enrol further installs
+  ▼
+server mints a code
+  │  · 8 chars, Crockford base32 (no I/L/O/U)
+  │  · 600 s TTL, single use
+  │  · only sha256(code) stored
+  ▼
+dashboard renders  https://<origin>/p/<CODE>   as QR + text
+  │  origin = WHICH server · path = WHICH code
+  │  one string, because the app has nothing baked in and no
+  │  central directory exists to resolve a bare code to a host
+  ▼
+phone companion  POST /api/pair/claim          (no auth — none exists yet)
+  │  · per-IP hourly limiter, fails CLOSED
+  │  · verified and burned in ONE transaction, so two apps
+  │    racing the same code cannot both win
+  │  · missing / expired / used all return one message
+  ▼
+fresh 24-byte credential returned once → written to KVS → READ BACK
+  │  the read-back matters: the code is already burned, so a silent
+  │  storage failure would leave the app unpaired with no explanation
+  ▼
+every later request carries the device secret; requireAuth checks user
+secrets first, then unrevoked device rows
+```
+
+Revoking (`DELETE /api/devices/:id`) sets `revoked_at`. The credential stops
+authenticating on the next request and no other device is affected — which is
+the whole reason device credentials are separate rows rather than copies of the
+user secret.
+
+---
+
 ## Request flow: dashboard authentication
 
 ```
@@ -157,6 +200,9 @@ SQLite, WAL mode, migrations in `server/src/db.ts`.
 | `inbox` | Received messages, read state, raw payload |
 | `outbox` | Idempotency ledger keyed by `client_uuid` |
 | `auth_handoffs` | Single-use dashboard sign-in tokens |
+| `devices` | One row per paired install: name, Argon2id hash of its own credential, `last_seen_at`, `revoked_at` |
+| `pairing_codes` | Short-lived pairing codes; only `sha256(code)` is stored |
+| `pair_attempts` | Per-IP hourly counters for the unauthenticated claim endpoint |
 | `client_errors` | Crash dumps shipped from the glasses |
 | `rate_limit_state` | Hourly counters per user and bucket |
 

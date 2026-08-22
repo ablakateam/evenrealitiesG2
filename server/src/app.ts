@@ -18,6 +18,7 @@ import { accountRouter } from './routes/account.js';
 import { idleRouter } from './routes/idle.js';
 import { voiceCommandRouter } from './routes/voice-command.js';
 import { telemetryRouter } from './routes/telemetry.js';
+import { pairRouter } from './routes/pair.js';
 import { authHandoffRouter } from './routes/auth-handoff.js';
 
 export function buildApp(): Express {
@@ -73,6 +74,7 @@ export function buildApp(): Express {
   app.use(voiceCommandRouter);
   app.use(telemetryRouter);
   app.use(authHandoffRouter);
+  app.use(pairRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'not_found' });

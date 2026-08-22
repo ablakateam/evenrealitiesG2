@@ -13,6 +13,8 @@ const ARGON2_OPTIONS: argon2.Options = {
 
 export interface AuthenticatedUser {
   id: number;
+  /** Set when the caller authenticated with a device secret, not the user secret. */
+  deviceId?: number;
 }
 
 declare global {
@@ -75,15 +77,40 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
   const db = getDb();
-  const rows = db
+
+  // 1. User shared secrets. This is what the dashboard and any pre-pairing
+  //    build present, and it remains the credential that can mint pairing
+  //    codes and rotate itself.
+  const users = db
     .prepare('SELECT id, shared_secret_hash FROM users')
     .all() as { id: number; shared_secret_hash: string }[];
-  for (const row of rows) {
+  for (const row of users) {
     if (await verifySecret(token, row.shared_secret_hash)) {
       req.user = { id: row.id };
       next();
       return;
     }
   }
-  res.status(401).json({ error: 'invalid_token', message: 'shared secret does not match any user' });
+
+  // 2. Device secrets, issued by the pairing flow. Same access to the user's
+  //    data, but individually revocable — and a revoked row stops matching
+  //    here without disturbing any other install.
+  const devices = db
+    .prepare('SELECT id, user_id, secret_hash FROM devices WHERE revoked_at IS NULL')
+    .all() as { id: number; user_id: number; secret_hash: string }[];
+  for (const row of devices) {
+    if (await verifySecret(token, row.secret_hash)) {
+      req.user = { id: row.user_id, deviceId: row.id };
+      try {
+        db.prepare("UPDATE devices SET last_seen_at = datetime('now') WHERE id = ?").run(row.id);
+      } catch (err) {
+        // last_seen is telemetry, never a reason to reject a valid request.
+        log.warn({ err, deviceId: row.id }, 'failed to stamp device last_seen_at');
+      }
+      next();
+      return;
+    }
+  }
+
+  res.status(401).json({ error: 'invalid_token', message: 'secret does not match any user or paired device' });
 }

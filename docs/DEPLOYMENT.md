@@ -210,11 +210,18 @@ a `403` on every inbound message and no other symptom.
 cd ../hud
 npm ci
 cp .env.example .env
-# VOX_DOMAIN=vox.example.com
-# VITE_VOX_SERVER=https://vox.example.com
-# VITE_VOX_SECRET=<the bootstrap secret, or a rotated one>
+# VOX_DOMAIN=vox.example.com   ← the only value pack.sh needs
 bash pack.sh            # → hud/vox.ehpk
 ```
+
+`VOX_DOMAIN` goes into `app.json`'s network whitelist. It is not a secret, but
+it is load-bearing: the Even Realities App blocks requests to any domain the
+manifest does not list, and wildcards are not supported. A build can therefore
+only ever talk to the one domain it was packed for — which is why each
+self-hoster packs their own `.ehpk`.
+
+The bundle carries **no credential**. `pack.sh` clears `VITE_VOX_SECRET`,
+then greps `dist/` and refuses to pack if the value is still present.
 
 Upload `vox.ehpk` at [hub.evenrealities.com](https://hub.evenrealities.com),
 then **switch the build to the Beta track**. Uploads default to Private, and
@@ -222,6 +229,20 @@ a Private build reports "test version expired" to invited testers with no
 indication that the track is the cause.
 
 Install from the Even Realities phone app → Even Hub → VOX.
+
+### Pair the install
+
+A fresh install has no server address and no credential — it shows a pairing
+screen until you give it one.
+
+1. Dashboard → **Account** → **Pair your glasses** → *Create pairing link*.
+2. Open VOX on the phone, paste the link, tap **Pair this device**.
+3. Tap once on the glasses to leave the *not paired yet* card.
+
+The link (`https://vox.example.com/p/ABCD2345`) carries the origin and the
+code together — the app has nothing baked in, so it needs both. Codes last ten
+minutes and are single use. What the device stores is its own credential,
+revocable on its own from the same screen.
 
 ---
 

@@ -16,6 +16,19 @@ Speak a message. Check it. Send it. Without reaching for your phone.
 
 ---
 
+> [!IMPORTANT]
+> **VOX is self-hosted. Installing the app is not enough to use it.**
+>
+> There is no VOX service to sign up for. You run the server — on your own VPS,
+> with your own Twilio, email and model-provider credentials — and the glasses
+> app connects to it. An unpaired install shows a pairing screen and nothing
+> else.
+>
+> Because the Even Realities platform pins each build to a single domain in its
+> network whitelist (wildcards are not supported), you also build your own
+> `.ehpk` rather than installing someone else's. [Installation](#installation)
+> walks through the whole path: server → dashboard → build → pair.
+
 ## What it is
 
 VOX turns the G2 into a messenger you talk to. Tap the temple, say what you
@@ -273,11 +286,20 @@ inbound message with a `403` and no other symptom.
 ```bash
 cd ../hud && npm ci
 cp .env.example .env
-#   VOX_DOMAIN=vox.example.com
-#   VITE_VOX_SERVER=https://vox.example.com
-#   VITE_VOX_SECRET=<your shared secret>
+#   VOX_DOMAIN=vox.example.com          ← your domain, for the network whitelist
 bash pack.sh          # → hud/vox.ehpk
 ```
+
+`pack.sh` builds a bundle with **no credential in it**. It clears
+`VITE_VOX_SECRET` before invoking Vite, then greps the output to confirm the
+secret is absent and refuses to pack if it is not. The app you install starts
+unpaired and asks for a pairing link on first run.
+
+`VOX_DOMAIN` is still required, and it is not a secret — it goes into
+`app.json`'s network whitelist. The Even Realities App blocks any request to a
+domain the manifest does not list, and **wildcards are not supported**, so a
+build can only talk to the one domain it was packed for. This is why every
+self-hoster builds their own `.ehpk` rather than installing someone else's.
 
 Upload `vox.ehpk` at [hub.evenrealities.com](https://hub.evenrealities.com),
 then **switch the build to the Beta track**. Uploads default to Private, and a
@@ -285,6 +307,28 @@ Private build reports *"test version expired"* to invited testers with no
 indication that the track is the cause.
 
 Install from the Even Realities phone app → Even Hub → VOX.
+
+### Step 7 — Pair the app with your server
+
+The app has no idea where your server is until you tell it. Pairing is what
+delivers both halves — the address and a credential.
+
+1. Open your dashboard → **Account** → **Pair your glasses** → *Create pairing
+   link*. You get a QR code and a link like
+   `https://vox.example.com/p/ABCD2345`.
+2. Open VOX on your phone. An unpaired install shows the **Connect VOX** screen.
+3. Paste the link and tap **Pair this device**.
+4. On the glasses, tap once. The *not paired yet* card re-checks and drops you
+   on the home screen.
+
+The link carries the origin *and* the code, which is why one string is enough:
+the origin says which server, the code says what to redeem there. Codes last
+ten minutes and are single use.
+
+What the app stores is a **per-device credential**, not your account's shared
+secret. Each paired install is listed under Account and can be revoked on its
+own, and a device credential deliberately cannot mint further pairing codes —
+so a compromised install cannot enrol more devices.
 
 <img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/native-home.png" alt="VOX home screen at the G2's native 576×288 resolution" width="576">
 
