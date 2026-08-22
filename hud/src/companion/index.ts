@@ -56,9 +56,77 @@ const TONES: Tone[] = [
   'original',
 ];
 
+
+/* --- design system ------------------------------------------------------ */
+
+const PHOS = '#39ff6a';
+/* Google Fonts is NOT reachable from the packed app — app.json's network
+   whitelist contains only the VOX server, and adding font hosts would mean a
+   manifest change and another review. The system mono stack resolves to
+   SF Mono on iOS, which is a better technical face than anything we would
+   have loaded anyway, and costs nothing. */
+const MONO = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace";
+
+/**
+ * Styles that inline cssText cannot express: keyframes and pseudo-elements.
+ * Injected once per render, matching the dashboard's visual language so the
+ * two surfaces read as one product.
+ */
+function injectStyles(): void {
+  if (document.getElementById('vox-style')) return;
+  const el = document.createElement('style');
+  el.id = 'vox-style';
+  el.textContent = `
+    @property --trace-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+    @keyframes vox-trace   { to { --trace-angle: 360deg; } }
+    @keyframes vox-rise    { from { opacity:0; transform:translateY(6px);} to {opacity:1;transform:none;} }
+    @keyframes vox-breathe { 0%,100%{opacity:1} 50%{opacity:.55} }
+
+    /* The signature: a phosphor light travelling a live surface's outline,
+       the same gesture the glasses use for a live voice trace. */
+    .vox-trace { position: relative; isolation: isolate; }
+    .vox-trace::before {
+      content:''; position:absolute; inset:-1px; border-radius:inherit; padding:1px;
+      background: conic-gradient(from var(--trace-angle), transparent 0deg,
+        transparent 275deg, rgba(57,255,106,.5) 330deg, ${PHOS} 352deg,
+        rgba(57,255,106,.5) 358deg, transparent 360deg);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      animation: vox-trace 4s linear infinite;
+      pointer-events:none;
+    }
+
+    /* Corner ticks — instrument framing, echoing the G2's container borders. */
+    .vox-bracket { position: relative; }
+    .vox-bracket::before, .vox-bracket::after {
+      content:''; position:absolute; width:9px; height:9px;
+      border-color: rgba(57,255,106,.45); border-style: solid; pointer-events:none;
+    }
+    .vox-bracket::before { top:-1px; left:-1px;  border-width:1px 0 0 1px; border-top-left-radius:3px; }
+    .vox-bracket::after  { bottom:-1px; right:-1px; border-width:0 1px 1px 0; border-bottom-right-radius:3px; }
+
+    .vox-rise { animation: vox-rise .38s cubic-bezier(.22,.8,.3,1) both; }
+    .vox-live { animation: vox-breathe 2.4s ease-in-out infinite; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .vox-trace::before, .vox-rise, .vox-live { animation: none !important; }
+    }
+  `;
+  document.head.appendChild(el);
+}
+
+/** Small uppercase label, used above every section. */
+function eyebrowStyle(): string {
+  return `font-family:${MONO}; font-size:10px; letter-spacing:.18em;
+          text-transform:uppercase; color:#5f646b;`;
+}
+
 /* --- root shell + boot -------------------------------------------------- */
 
 export function renderCompanion(root: HTMLElement): void {
+  injectStyles();
   root.innerHTML = '';
   // Set `display` explicitly. index.html styles #app as a centred flexbox
   // for the static placeholder, and that rule lives in a stylesheet, so
@@ -76,6 +144,10 @@ export function renderCompanion(root: HTMLElement): void {
     color: #E5E5E5;
     font: 15px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    /* CRT lineage, at the threshold of visibility. Stronger than this and it
+       reads as a costume rather than an instrument. */
+    background-image: repeating-linear-gradient(
+      to bottom, rgba(57,255,106,.015) 0 1px, transparent 1px 3px);
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -99,14 +171,23 @@ export function renderCompanion(root: HTMLElement): void {
   });
   root.appendChild(wrap);
 
-  wrap.appendChild(headerBlock(server));
-  wrap.appendChild(statusBlock());
-  wrap.appendChild(todayBlock());
-  wrap.appendChild(styleBlock(server, secret));
-  wrap.appendChild(connectBlock(server, secret));
-  wrap.appendChild(quickActionsBlock(server));
-  wrap.appendChild(activityBlock());
-  wrap.appendChild(footerBlock(server));
+  const blocks = [
+    headerBlock(server),
+    statusBlock(),
+    todayBlock(),
+    styleBlock(server, secret),
+    connectBlock(server, secret),
+    quickActionsBlock(server),
+    activityBlock(),
+    footerBlock(server),
+  ];
+  blocks.forEach((b, i) => {
+    // Assemble rather than snap in. Cheap, and it makes the surface feel
+    // like it is powering up instead of repainting.
+    b.classList.add('vox-rise');
+    b.style.animationDelay = `${i * 45}ms`;
+    wrap.appendChild(b);
+  });
 
   void hydrate(server, secret);
 
@@ -190,8 +271,8 @@ function headerBlock(_server: string): HTMLElement {
   wrap.appendChild(
     el('div', {
       style: `
-        font-size: 32px; font-weight: 700; letter-spacing: -0.5px;
-        color: #E5E5E5;
+        font-family: ${MONO}; font-size: 30px; font-weight: 700;
+        letter-spacing: .28em; text-indent: .28em; color: #E5E5E5;
       `,
       text: 'VOX',
     }),
@@ -208,7 +289,8 @@ function headerBlock(_server: string): HTMLElement {
     el('div', {
       id: 'vox-header-meta',
       style: `
-        font-size: 11px; opacity: 0.4; margin-top: 8px;
+        font-family: ${MONO}; font-size: 10px; letter-spacing: .12em;
+        text-transform: uppercase; opacity: 0.42; margin-top: 10px;
         font-variant-numeric: tabular-nums;
       `,
       text: `v${APP_VERSION} · loading…`,
@@ -228,6 +310,9 @@ function paintHeader(_status: IdleStatus, integrations: IntegrationView[]): void
 
 function statusBlock(): HTMLElement {
   const card = el('section', { id: 'vox-status-card', style: cardStyle('loading') });
+  // The status card is the one genuinely live surface, so it is the one
+  // that carries the trace. If everything traces, nothing reads as live.
+  card.className = 'vox-bracket vox-trace vox-rise';
   card.textContent = 'checking services…';
   return card;
 }
@@ -235,6 +320,7 @@ function statusBlock(): HTMLElement {
 function paintStatus(status: IdleStatus, integrations: IntegrationView[]): void {
   const card = document.getElementById('vox-status-card');
   if (!card) return;
+  card.className = 'vox-bracket vox-trace';
 
   // Services worth surfacing on the home card. LLM providers are collapsed
   // into a single "AI" indicator (green if any one is configured + ok).
@@ -262,7 +348,7 @@ function paintStatus(status: IdleStatus, integrations: IntegrationView[]): void 
   });
   top.appendChild(
     el('div', {
-      style: `font-weight: 600; font-size: 17px;`,
+      style: `font-family:${MONO}; font-weight: 600; font-size: 14px; letter-spacing:.04em;`,
       text: state === 'ok' ? 'all services ready' : state === 'partial' ? 'partially connected' : 'needs setup',
     }),
   );
@@ -282,15 +368,17 @@ function paintStatus(status: IdleStatus, integrations: IntegrationView[]): void 
     const chip = el('div', {
       style: `
         display: inline-flex; align-items: center; gap: 6px;
-        font-size: 14px; opacity: ${c.ok ? 1 : 0.5};
+        font-family: ${MONO}; font-size: 12px; letter-spacing: .1em;
+        text-transform: uppercase; opacity: ${c.ok ? 1 : 0.45};
       `,
     });
     chip.appendChild(
       el('span', {
         style: `
-          width: 8px; height: 8px; border-radius: 50%;
-          background: ${c.ok ? '#39FF6A' : '#666'};
+          width: 7px; height: 7px; border-radius: 50%;
+          background: ${c.ok ? PHOS : '#555'};
           display: inline-block;
+          ${c.ok ? `box-shadow: 0 0 7px ${PHOS};` : ''}
         `,
       }),
     );
@@ -346,10 +434,11 @@ function paintToday(
 }
 
 function statTile(value: number, label: string, warn = false): HTMLElement {
-  const tile = el('div', {
+  const tile = el('div', { 
     style: `
-      background: #262626;
-      border: 1px solid ${warn ? '#5a3030' : '#333'};
+      position: relative;
+      background: #151719;
+      border: 1px solid ${warn ? '#3d2126' : '#2a2d31'};
       border-radius: 10px;
       padding: 14px 8px;
       text-align: center;
@@ -358,7 +447,8 @@ function statTile(value: number, label: string, warn = false): HTMLElement {
   tile.appendChild(
     el('div', {
       style: `
-        font-size: 26px; font-weight: 700;
+        font-family: ${MONO}; font-size: 24px; font-weight: 700;
+        letter-spacing: -.02em; line-height: 1;
         color: ${warn ? '#ff8c8c' : '#E5E5E5'};
         font-variant-numeric: tabular-nums;
       `,
@@ -367,7 +457,7 @@ function statTile(value: number, label: string, warn = false): HTMLElement {
   );
   tile.appendChild(
     el('div', {
-      style: `font-size: 11px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;`,
+      style: eyebrowStyle() + 'margin-top:8px;',
       text: label,
     }),
   );
@@ -392,14 +482,17 @@ function styleBlock(server: string, secret: string): HTMLElement {
   const card = el('div', {
     id: 'vox-style-card',
     style: `
-      background: #262626; border: 1px solid #333;
+      position: relative;
+      background: #151719; border: 1px solid #2a2d31;
       border-radius: 10px; padding: 14px;
     `,
   });
+  card.className = 'vox-bracket';
 
   const current = el('div', {
     id: 'vox-style-current',
-    style: `font-size: 15px; font-weight: 600; margin-bottom: 4px;`,
+    style: `font-family:${MONO}; font-size:15px; font-weight:700;
+            letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px;`,
     text: 'loading…',
   });
   card.appendChild(current);
@@ -432,8 +525,9 @@ function styleBlock(server: string, secret: string): HTMLElement {
 
 function chipStyle(active: boolean): string {
   return `
-    padding: 7px 12px; border-radius: 999px; cursor: pointer;
-    font: inherit; font-size: 13px; text-transform: capitalize;
+    padding: 8px 12px; border-radius: 999px; cursor: pointer;
+    font-family: ${MONO}; font-size: 11px; letter-spacing: .1em;
+    text-transform: uppercase; min-height: 34px;
     background: ${active ? '#39FF6A' : '#1f1f1f'};
     color: ${active ? '#101010' : '#E5E5E5'};
     border: 1px solid ${active ? '#39FF6A' : '#3a3a3a'};
@@ -490,16 +584,19 @@ function connectBlock(server: string, secret: string): HTMLElement {
   wrap.appendChild(sectionLabel('dashboard'));
 
   const card = el('div', {
-    style: `background: #262626; border: 1px solid #333; border-radius: 10px; padding: 14px;`,
+    style: `position:relative; background:#151719; border:1px solid #2a2d31;
+            border-radius:10px; padding:14px;`,
   });
+  card.className = 'vox-bracket';
 
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.textContent = 'Open dashboard';
   btn.style.cssText = `
-    display: block; width: 100%; padding: 13px; border-radius: 9px;
-    background: #39FF6A; color: #101010; border: 0;
-    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    display: block; width: 100%; padding: 14px; border-radius: 9px;
+    background: ${PHOS}; color: #0a0b0d; border: 0; min-height: 44px;
+    font-family: ${MONO}; font-size: 13px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; cursor: pointer;
   `;
   const status = el('div', {
     style: `font-size: 12px; opacity: 0.55; margin-top: 8px; text-align: center;`,
@@ -558,9 +655,10 @@ function connectBlock(server: string, secret: string): HTMLElement {
   toggle.type = 'button';
   toggle.textContent = 'Show';
   toggle.style.cssText = `
-    flex: 0 0 auto; padding: 7px 12px; border-radius: 7px; cursor: pointer;
-    background: #1f1f1f; color: #E5E5E5; border: 1px solid #3a3a3a;
-    font: inherit; font-size: 13px;
+    flex: 0 0 auto; padding: 9px 12px; border-radius: 7px; cursor: pointer;
+    background: #1f2225; color: #E5E5E5; border: 1px solid #2a2d31;
+    font-family: ${MONO}; font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase; min-height: 38px;
   `;
   let shown = false;
   toggle.addEventListener('click', () => {
@@ -570,7 +668,7 @@ function connectBlock(server: string, secret: string): HTMLElement {
   });
   revealRow.appendChild(value);
   revealRow.appendChild(toggle);
-  card.appendChild(el('div', { style: `font-size: 11px; opacity: 0.4; margin-top: 14px;`, text: 'PASSKEY' }));
+  card.appendChild(el('div', { style: eyebrowStyle() + 'margin-top:14px;', text: 'passkey' }));
   card.appendChild(revealRow);
 
   wrap.appendChild(card);
@@ -615,20 +713,20 @@ function actionCard(href: string, label: string, id: string): HTMLElement {
   link.href = href;
   link.style.cssText = `
     display: block; padding: 14px;
-    background: #262626; border: 1px solid #333;
+    background: #151719; border: 1px solid #2a2d31;
     border-radius: 10px; text-decoration: none;
     color: inherit;
   `;
   link.appendChild(
     el('div', {
-      style: `font-size: 15px; font-weight: 600;`,
+      style: `font-family:${MONO}; font-size:13px; font-weight:600; letter-spacing:.06em;`,
       text: label,
     }),
   );
   link.appendChild(
     el('div', {
       id: `${id}-badge`,
-      style: `font-size: 12px; opacity: 0.5; margin-top: 4px;`,
+      style: eyebrowStyle() + 'margin-top:6px;',
       text: 'open →',
     }),
   );
@@ -674,17 +772,26 @@ function activityRow(item: HistoryItem): HTMLElement {
   const row = el('div', {
     style: `
       padding: 12px 14px;
-      border: 1px solid #333;
+      border: 1px solid #2a2d31;
       border-radius: 10px;
-      background: #262626;
+      background: #151719;
     `,
   });
   const head = el('div', {
     style: `display: flex; justify-content: space-between; align-items: baseline; font-size: 13px;`,
   });
-  head.appendChild(el('span', { style: `font-weight: 600;`, text: `${direction} ${name}` }));
   head.appendChild(
-    el('span', { style: `opacity: 0.55; font-size: 11px;`, text: `${channel} · ${ago}` }),
+    el('span', {
+      style: `font-family:${MONO}; font-size:12px; font-weight:600;`,
+      text: `${direction} ${name}`,
+    }),
+  );
+  head.appendChild(
+    el('span', {
+      style: `font-family:${MONO}; font-size:10px; letter-spacing:.1em;
+              text-transform:uppercase; opacity:.5;`,
+      text: `${channel} · ${ago}`,
+    }),
   );
   row.appendChild(head);
   row.appendChild(
@@ -696,8 +803,9 @@ function activityRow(item: HistoryItem): HTMLElement {
   if (item.status !== 'sent' && item.status !== 'received' && item.status !== 'delivered') {
     row.appendChild(
       el('div', {
-        style: `margin-top: 4px; font-size: 11px; opacity: 0.55; font-style: italic;`,
-        text: item.status,
+        style: `margin-top:4px; font-family:${MONO}; font-size:10px;
+                letter-spacing:.12em; opacity:.55;`,
+        text: item.status.toUpperCase(),
       }),
     );
   }
@@ -721,12 +829,13 @@ function footerBlock(server: string): HTMLElement {
   );
   const link = document.createElement('a');
   link.href = server;
-  link.style.cssText = `color: #39FF6A; text-decoration: none; font-weight: 500;`;
+  link.style.cssText = `color:${PHOS}; text-decoration:none; font-family:${MONO};
+                        font-size:12px; letter-spacing:.06em;`;
   link.textContent = stripProto(server);
   wrap.appendChild(link);
   wrap.appendChild(
     el('div', {
-      style: `margin-top: 12px; font-size: 10px; opacity: 0.5;`,
+      style: eyebrowStyle() + 'margin-top:12px;',
       text: `VOX v${APP_VERSION} · SDK ${SDK_VERSION}`,
     }),
   );
@@ -780,13 +889,14 @@ type CardState = 'loading' | 'ok' | 'partial' | 'error';
 
 function cardStyle(state: CardState): string {
   const map: Record<CardState, { bg: string; border: string }> = {
-    loading: { bg: '#262626', border: '#333' },
-    ok: { bg: '#1f2f1f', border: '#305a30' },
-    partial: { bg: '#2f2b1f', border: '#5a4a30' },
-    error: { bg: '#3a1f1f', border: '#5a3030' },
+    loading: { bg: '#151719', border: '#2a2d31' },
+    ok: { bg: '#111a13', border: '#1f3a24' },
+    partial: { bg: '#1a1710', border: '#3a3320' },
+    error: { bg: '#1c1113', border: '#3d2126' },
   };
   const { bg, border } = map[state];
   return `
+    position: relative;
     padding: 14px 16px;
     border: 1px solid ${border};
     border-radius: 12px;
@@ -795,13 +905,12 @@ function cardStyle(state: CardState): string {
 }
 
 function sectionLabel(text: string): HTMLElement {
-  return el('div', {
-    style: `
-      font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
-      opacity: 0.5; margin-bottom: 10px; font-weight: 500;
-    `,
-    text,
+  const wrap = el('div', {
+    style: `display:flex; align-items:center; gap:8px; margin-bottom:10px;`,
   });
+  wrap.appendChild(el('span', { style: `display:inline-block; width:14px; height:1px; background:${PHOS}; opacity:.55;` }));
+  wrap.appendChild(el('span', { style: eyebrowStyle(), text }));
+  return wrap;
 }
 
 function el(
