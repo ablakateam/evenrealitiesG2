@@ -39,6 +39,7 @@ export function Inbox() {
   return (
     <>
       <PageHeading
+        eyebrow="Received"
         title="Inbox"
         subtitle={list.data ? `${list.data.unread_count} unread` : 'Incoming SMS and email'}
       />

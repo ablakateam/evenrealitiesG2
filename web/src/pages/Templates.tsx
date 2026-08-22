@@ -54,6 +54,7 @@ export function Templates() {
   return (
     <>
       <PageHeading
+        eyebrow="Saved messages"
         title="Templates"
         subtitle={`${items.length} quick-send phrases`}
       />

@@ -80,7 +80,7 @@ export function Preferences() {
 
   return (
     <>
-      <PageHeading title="Preferences" subtitle="Voice, AI, notifications, and smart features" />
+      <PageHeading eyebrow="Behaviour" title="Preferences" subtitle="Voice, AI, notifications, and smart features" />
       {savedNote && (
         <div className="mb-3">
           <InlineNote tone="ok">{savedNote}</InlineNote>
