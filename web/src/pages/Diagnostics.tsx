@@ -35,7 +35,7 @@ export function Diagnostics() {
 
   return (
     <>
-      <PageHeading title="Diagnostics" subtitle="End-to-end health checks across every pipe" />
+      <PageHeading eyebrow="System checks" title="Diagnostics" subtitle="End-to-end health checks across every pipe" />
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center justify-between gap-3 py-4">

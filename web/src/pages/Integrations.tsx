@@ -52,7 +52,7 @@ export function Integrations() {
 
   return (
     <>
-      <PageHeading title="Integrations" subtitle="Twilio, your email account, and AI providers" />
+      <PageHeading eyebrow="Connected services" title="Integrations" subtitle="Twilio, your email account, and AI providers" />
 
       {integrations.isLoading && <Spinner />}
 

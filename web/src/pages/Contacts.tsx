@@ -54,7 +54,7 @@ export function Contacts() {
 
   return (
     <>
-      <PageHeading title="Contacts" subtitle={contacts.data ? `${contacts.data.total} saved` : 'People you message'} />
+      <PageHeading eyebrow="Address book" title="Contacts" subtitle={contacts.data ? `${contacts.data.total} saved` : 'People you message'} />
 
       <div className="mb-4 flex gap-2">
         <Input placeholder="Search name, phone, email" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -76,12 +76,12 @@ export function Contacts() {
 
       <div className="space-y-2">
         {contacts.data?.items.map((c) => (
-          <Card key={c.id}>
+          <Card key={c.id} bracketed={false}>
             <CardBody className="flex items-center gap-2 py-3 sm:gap-3">
               <button
                 onClick={() => toggleFav.mutate(c)}
                 aria-label={c.favorite ? 'Unfavourite' : 'Favourite'}
-                className="grid h-touch w-touch shrink-0 place-items-center rounded-lg hover:bg-bg-inset lg:h-8 lg:w-8"
+                className="grid h-touch w-touch min-w-touch shrink-0 place-items-center rounded-lg hover:bg-bg-inset lg:h-8 lg:w-8 lg:min-w-0"
               >
                 <Star size={16} className={c.favorite ? 'fill-phos text-phos' : 'text-ink-faint'} />
               </button>

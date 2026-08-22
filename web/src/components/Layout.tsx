@@ -60,7 +60,7 @@ export function Layout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile top bar */}
-        <header className="sticky top-0 z-30 flex shrink-0 flex-col border-b border-line bg-bg/95 backdrop-blur pt-safe lg:hidden">
+        <header className="sticky top-0 z-30 flex shrink-0 flex-col border-b border-line bg-bg/90 backdrop-blur-md pt-safe lg:hidden after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-gradient-to-r after:from-transparent after:via-phos/30 after:to-transparent">
           <div className="flex h-14 items-center gap-1 px-gutter-sm">
             {returnTo && (
               <button
@@ -81,17 +81,17 @@ export function Layout() {
             >
               <Menu size={20} />
             </button>
-            <span className="truncate text-sm font-semibold text-ink">
+            <span className="truncate font-display text-[13px] font-600 tracking-tight text-ink">
               {current?.label ?? 'VOX'}
             </span>
-            <span className="ml-auto mr-2 rounded bg-phos/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-phos">
+            <span className="ml-auto mr-2 rounded border border-phos/25 bg-phos/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-phos">
               G2
             </span>
           </div>
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-gutter py-6 pb-safe sm:py-8">
+          <div className="mx-auto max-w-3xl px-gutter py-6 pb-safe sm:py-8 xl:max-w-4xl">
             <Outlet />
           </div>
         </main>

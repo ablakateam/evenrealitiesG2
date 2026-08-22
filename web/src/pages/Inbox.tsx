@@ -55,7 +55,7 @@ export function Inbox() {
 
       <div className="space-y-2">
         {list.data?.items.map((m) => (
-          <Card key={m.id}>
+          <Card key={m.id} bracketed={false}>
             <CardBody
               className="flex cursor-pointer items-start gap-3 py-3"
               {...{ onClick: () => setOpen(m.id) }}

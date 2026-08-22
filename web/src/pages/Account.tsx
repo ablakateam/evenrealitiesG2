@@ -71,7 +71,7 @@ export function Account() {
 
   return (
     <>
-      <PageHeading title="Account" subtitle="Pairing, secret rotation, sign out" />
+      <PageHeading eyebrow="Access" title="Account" subtitle="Pairing, secret rotation, sign out" />
 
       {/* Pairing QR */}
       <Card className="mb-3">

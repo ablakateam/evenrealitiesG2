@@ -72,7 +72,7 @@ export function Preferences() {
   if (config.isLoading || !local) {
     return (
       <>
-        <PageHeading title="Preferences" />
+        <PageHeading eyebrow="Behaviour" title="Preferences" />
         <Spinner />
       </>
     );

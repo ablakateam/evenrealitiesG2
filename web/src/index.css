@@ -2,9 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --trace-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 @layer base {
   :root {
     color-scheme: dark;
+    --trace-angle: 0deg;
   }
 
   html,
@@ -21,6 +28,13 @@
   body {
     @apply bg-bg text-ink font-sans antialiased;
     margin: 0;
+    /* CRT lineage, kept at the threshold of visibility. Any stronger and
+       this stops reading as an instrument and starts reading as a costume. */
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(57, 255, 106, 0.014) 0 1px,
+      transparent 1px 3px
+    );
     /* Nothing in this app scrolls sideways on purpose. A single overflowing
        card used to drag the whole page with it. */
     overflow-x: hidden;
@@ -70,6 +84,89 @@
 }
 
 @layer components {
+  /* ── Signature: the phosphor trace ────────────────────────────────────
+     A light travels the outline of a live surface — the same gesture the
+     glasses use for a live voice trace, brought to the console.
+
+     Implemented with a registered custom property so the conic gradient's
+     angle is genuinely animatable. Browsers without @property fall back to
+     a static hairline, which is the normal card border, so nothing breaks.
+
+     Reserved for surfaces that are actually LIVE. If everything traces,
+     nothing reads as live. */
+  .trace-border {
+    position: relative;
+    isolation: isolate;
+  }
+  .trace-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: conic-gradient(
+      from var(--trace-angle),
+      transparent 0deg,
+      transparent 275deg,
+      rgba(57, 255, 106, 0.55) 330deg,
+      #39ff6a 352deg,
+      rgba(57, 255, 106, 0.55) 358deg,
+      transparent 360deg
+    );
+    /* Punch out the middle so only the 1px rim paints. */
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ── Instrument framing ───────────────────────────────────────────────
+     Corner ticks rather than a heavier border. Reads as a measurement
+     frame; costs no extra DOM. */
+  .bracketed {
+    position: relative;
+  }
+  .bracketed::before,
+  .bracketed::after {
+    content: '';
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    border-color: rgba(57, 255, 106, 0.5);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .bracketed::before {
+    top: -1px;
+    left: -1px;
+    border-width: 1px 0 0 1px;
+    border-top-left-radius: 3px;
+  }
+  .bracketed::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 1px 1px 0;
+    border-bottom-right-radius: 3px;
+  }
+
+  /* Numbers line up in columns; a stat that jitters as it updates is a
+     stat you cannot scan. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Small uppercase label used above sections and beside values. */
+  .eyebrow {
+    @apply font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint;
+  }
+
   /* Status dot — used across Integrations / Overview / Diagnostics */
   .dot {
     @apply inline-block h-2 w-2 rounded-full;

@@ -47,8 +47,37 @@ export default {
         danger: '#ff5a5a',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // Three roles, deliberately distinct.
+        //   display — Martian Mono. Wide and engineered; carries titles,
+        //             eyebrows and stat values. Used sparingly.
+        //   mono    — JetBrains Mono. Every label, number and status string.
+        //   sans    — Inter. Prose only, where monospace hurts reading.
+        display: ['"Martian Mono"', 'ui-monospace', 'monospace'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+      },
+      keyframes: {
+        // The signature: a phosphor trace travelling a card's outline, the
+        // same gesture the glasses use for a live voice trace.
+        trace: { to: { '--trace-angle': '360deg' } },
+        // Cards settle in on load rather than appearing all at once.
+        rise: {
+          from: { opacity: '0', transform: 'translateY(6px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        // A status dot that means "live" should look alive.
+        breathe: {
+          '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0 rgba(57,255,106,.45)' },
+          '50%': { opacity: '.72', boxShadow: '0 0 0 4px rgba(57,255,106,0)' },
+        },
+        // Caret for the "console" prompt in the sidebar.
+        blink: { '0%, 45%': { opacity: '1' }, '55%, 100%': { opacity: '0' } },
+      },
+      animation: {
+        trace: 'trace 4s linear infinite',
+        rise: 'rise .38s cubic-bezier(.22,.8,.3,1) both',
+        breathe: 'breathe 2.4s ease-in-out infinite',
+        blink: 'blink 1.15s steps(1) infinite',
       },
       borderRadius: {
         card: '12px',

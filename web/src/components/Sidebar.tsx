@@ -42,9 +42,13 @@ export function NavList({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
           className={({ isActive }) =>
             [
-              'flex min-h-touch items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+              'group relative flex min-h-touch items-center gap-3 rounded-lg px-3 py-2',
+              'font-mono text-[13px] tracking-wide transition-colors',
+              // A phosphor rail on the active row, drawn on the container
+              // edge rather than as a background wash — the same way the
+              // glasses mark a selected list item.
               isActive
-                ? 'bg-bg-inset text-ink font-medium'
+                ? 'bg-bg-inset text-ink before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[2px] before:-translate-y-1/2 before:rounded-full before:bg-phos before:shadow-[0_0_8px_rgba(57,255,106,.7)]'
                 : 'text-ink-muted hover:bg-bg-inset hover:text-ink',
             ].join(' ')
           }
@@ -64,9 +68,12 @@ export function NavList({ onNavigate }: { onNavigate?: () => void }) {
 export function SidebarBrand() {
   return (
     <div className="flex h-14 shrink-0 items-center gap-2 px-5">
-      <span className="text-base font-bold tracking-tight text-ink">VOX</span>
-      <span className="rounded bg-phos/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-phos">
+      <span className="font-display text-[15px] font-700 tracking-[0.2em] text-ink">VOX</span>
+      <span className="rounded border border-phos/25 bg-phos/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-phos">
         G2
+      </span>
+      <span className="ml-auto animate-blink font-mono text-[13px] text-phos/70" aria-hidden="true">
+        _
       </span>
     </div>
   );
@@ -81,7 +88,7 @@ export function SignOutButton({ onNavigate }: { onNavigate?: () => void }) {
           onNavigate?.();
           clearSecret();
         }}
-        className="min-h-touch w-full rounded-lg px-3 py-2 text-left text-xs text-ink-faint hover:bg-bg-inset hover:text-ink-muted"
+        className="min-h-touch w-full rounded-lg px-3 py-2 text-left font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint hover:bg-bg-inset hover:text-ink-muted"
       >
         Sign out
       </button>

@@ -68,7 +68,7 @@ export function Templates() {
 
       <div className="space-y-2">
         {items.map((t, idx) => (
-          <Card key={t.id}>
+          <Card key={t.id} bracketed={false}>
             <CardBody className="flex items-center gap-2 py-3 sm:gap-3">
               <div className="flex shrink-0 flex-col">
                 <button

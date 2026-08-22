@@ -31,7 +31,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         'inline-flex select-none items-center justify-center gap-2 rounded-lg transition-colors disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-phos/40',
         // 44px minimum on touch viewports (Apple HIG); the tighter desktop
         // heights come back at lg where the pointer is precise.
-        size === 'sm' ? 'min-h-touch px-3 text-sm lg:h-8 lg:min-h-0' : 'min-h-touch px-4 text-sm lg:h-10 lg:min-h-0',
+        'font-mono text-[13px] tracking-wide',
+        // min-w matters as much as min-h: a button whose label is a single
+        // glyph (the ★ favourites filter) is tall enough but only ~42px wide.
+        size === 'sm'
+          ? 'min-h-touch min-w-touch px-3 lg:h-8 lg:min-h-0 lg:min-w-0'
+          : 'min-h-touch min-w-touch px-4 lg:h-10 lg:min-h-0 lg:min-w-0',
         buttonVariants[variant],
         className,
       )}
@@ -42,9 +47,34 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = 'Button';
 
 /* --- Card ----------------------------------------------------------------- */
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
+export function Card({
+  className,
+  children,
+  live = false,
+  bracketed = true,
+}: {
+  className?: string;
+  children: ReactNode;
+  /**
+   * Marks a surface as carrying live data. Adds the travelling phosphor
+   * trace. Use it sparingly — it is the one loud element in the interface,
+   * and if every card traces then none of them reads as live.
+   */
+  live?: boolean;
+  /** Corner ticks. On by default; turn off for nested or dense cards. */
+  bracketed?: boolean;
+}) {
   return (
-    <div className={cx('rounded-card border border-line bg-bg-raised', className)}>{children}</div>
+    <div
+      className={cx(
+        'relative rounded-card border border-line bg-bg-raised',
+        bracketed && 'bracketed',
+        live && 'trace-border animate-trace',
+        className,
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -53,7 +83,11 @@ export function CardHeader({ children, className }: { children: ReactNode; class
 }
 
 export function CardTitle({ children }: { children: ReactNode }) {
-  return <h3 className="min-w-0 text-sm font-semibold text-ink">{children}</h3>;
+  return (
+    <h3 className="min-w-0 truncate font-display text-[13px] font-600 tracking-tight text-ink">
+      {children}
+    </h3>
+  );
 }
 
 export function CardBody({ children, className }: { children: ReactNode; className?: string }) {
@@ -89,7 +123,7 @@ export function Badge({ tone = 'idle', children }: { tone?: BadgeTone; children:
   return (
     <span
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-wider',
         badgeTones[tone],
       )}
     >
@@ -99,17 +133,33 @@ export function Badge({ tone = 'idle', children }: { tone?: BadgeTone; children:
 }
 
 /* --- StatusDot ------------------------------------------------------------ */
-export function StatusDot({ tone }: { tone: BadgeTone }) {
-  const cls = tone === 'ok' ? 'dot-ok' : tone === 'warn' ? 'dot-warn' : tone === 'bad' ? 'dot-bad' : 'dot-idle';
-  return <span className={cx('dot', cls)} />;
+export function StatusDot({ tone, live = false }: { tone: BadgeTone; live?: boolean }) {
+  const cls =
+    tone === 'ok' ? 'dot-ok' : tone === 'warn' ? 'dot-warn' : tone === 'bad' ? 'dot-bad' : 'dot-idle';
+  // Only a healthy signal breathes. A failed one holding still is the point.
+  return <span className={cx('dot', cls, live && tone === 'ok' && 'animate-breathe')} />;
 }
 
 /* --- Section heading ------------------------------------------------------ */
-export function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+export function PageHeading({
+  title,
+  subtitle,
+  eyebrow,
+}: {
+  title: string;
+  subtitle?: string;
+  eyebrow?: string;
+}) {
   return (
-    <div className="mb-6">
-      <h1 className="text-lg font-semibold text-ink sm:text-xl">{title}</h1>
-      {subtitle && <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>}
+    <div className="mb-6 animate-rise">
+      {eyebrow && (
+        <div className="eyebrow mb-1.5 flex items-center gap-2">
+          <span className="inline-block h-px w-4 bg-phos/50" />
+          {eyebrow}
+        </div>
+      )}
+      <h1 className="font-display text-lg font-600 tracking-tight text-ink sm:text-xl">{title}</h1>
+      {subtitle && <p className="mt-1.5 max-w-prose text-sm text-ink-muted">{subtitle}</p>}
     </div>
   );
 }
@@ -353,7 +403,7 @@ export function Modal({
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
     <div className="mb-3">
-      <label className="mb-1 block text-xs font-medium text-ink-muted">{label}</label>
+      <label className="eyebrow mb-1.5 block">{label}</label>
       {children}
       {hint && <p className="mt-1 text-xs text-ink-faint">{hint}</p>}
     </div>

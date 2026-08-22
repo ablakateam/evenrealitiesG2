@@ -48,7 +48,7 @@ export function Overview() {
 
   return (
     <>
-      <PageHeading title="Overview" subtitle="VOX server status and recent activity" />
+      <PageHeading eyebrow="Ground station" title="Overview" subtitle="VOX server status and recent activity" />
 
       {needsSetup && (
         <Link
@@ -62,8 +62,9 @@ export function Overview() {
         </Link>
       )}
 
-      {/* Status block */}
-      <Card className="mb-4">
+      {/* Status block — the one surface that is genuinely live, so it is
+          the one that carries the trace. */}
+      <Card className="mb-4 animate-rise" live={health.data !== undefined && !health.isError}>
         <CardHeader>
           <CardTitle>Status</CardTitle>
           {health.data && (
@@ -76,8 +77,8 @@ export function Overview() {
           {health.isLoading && <Spinner />}
           {health.isError && <p className="text-sm text-danger">Server unreachable.</p>}
           {health.data && (
-            <div className="flex items-center gap-2 text-sm">
-              <StatusDot tone="ok" />
+            <div className="flex items-center gap-2 font-mono text-[13px]">
+              <StatusDot tone="ok" live />
               <span className="text-ink">vox-server</span>
               <span className="text-ink-faint">·</span>
               <span className="text-ink-muted">
@@ -89,7 +90,7 @@ export function Overview() {
       </Card>
 
       {/* Today block */}
-      <Card className="mb-4">
+      <Card className="mb-4 animate-rise [animation-delay:60ms]">
         <CardHeader>
           <CardTitle>Today</CardTitle>
         </CardHeader>
@@ -112,7 +113,7 @@ export function Overview() {
       </Card>
 
       {/* Recent activity */}
-      <Card>
+      <Card className="animate-rise [animation-delay:120ms]">
         <CardHeader>
           <CardTitle>Recent</CardTitle>
         </CardHeader>
@@ -131,8 +132,8 @@ export function Overview() {
                     ) : (
                       <ArrowDownLeft size={15} className="shrink-0 text-phos" />
                     )}
-                    <span className="shrink-0 text-xs uppercase text-ink-faint">{item.channel}</span>
-                    <span className="min-w-0 flex-1 truncate text-ink-muted">
+                    <span className="eyebrow shrink-0">{item.channel}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink-muted">
                       {item.contact_name ?? '—'}
                     </span>
                     <StatusBadge status={item.status} />
@@ -160,11 +161,17 @@ function Stat({
   tone?: 'idle' | 'bad';
 }) {
   return (
-    <div>
-      <div className={`text-2xl font-semibold ${tone === 'bad' ? 'text-danger' : 'text-ink'}`}>
+    <div className="min-w-0">
+      {/* Display face + tabular figures: these are readings, and readings
+          should not reflow as their digits change. */}
+      <div
+        className={`tabular font-display text-[22px] font-600 leading-none tracking-tight ${
+          tone === 'bad' ? 'text-danger' : 'text-ink'
+        }`}
+      >
         {value}
       </div>
-      <div className="mt-0.5 text-xs text-ink-muted">{label}</div>
+      <div className="eyebrow mt-2 truncate">{label}</div>
     </div>
   );
 }
@@ -174,7 +181,9 @@ function StatusBadge({ status }: { status: string }) {
   const bad = ['failed', 'undelivered'].includes(status);
   return (
     <span
-      className={`shrink-0 text-xs ${ok ? 'text-phos' : bad ? 'text-danger' : 'text-ink-faint'}`}
+      className={`shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] ${
+        ok ? 'text-phos' : bad ? 'text-danger' : 'text-ink-faint'
+      }`}
     >
       {status}
     </span>

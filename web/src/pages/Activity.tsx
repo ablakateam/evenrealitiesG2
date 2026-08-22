@@ -49,7 +49,7 @@ export function Activity() {
 
   return (
     <>
-      <PageHeading title="Activity" subtitle="Every send and receive, with cost tracking" />
+      <PageHeading eyebrow="Message log" title="Activity" subtitle="Every send and receive, with cost tracking" />
 
       <Card className="mb-4">
         <CardHeader>
@@ -100,7 +100,7 @@ export function Activity() {
 
       <div className="space-y-1.5">
         {history.data?.items.map((h) => (
-          <Card key={h.id}>
+          <Card key={h.id} bracketed={false}>
             <CardBody className="py-2.5 text-sm">
               <div className="flex items-center gap-2">
                 {h.direction === 'out' ? (
@@ -110,7 +110,9 @@ export function Activity() {
                 )}
                 <span className="shrink-0 text-xs uppercase text-ink-faint">{h.channel}</span>
                 <span className="min-w-0 flex-1 truncate text-ink-muted">{h.contact_name ?? '—'}</span>
-                {h.tone && <span className="hidden shrink-0 text-xs text-ink-faint xs:inline">{h.tone}</span>}
+                {h.tone && <span className="hidden shrink-0 font-mono text-[11px] lowercase text-ink-faint xs:inline">
+                  {h.tone}
+                </span>}
                 <StatusText status={h.status} />
               </div>
               <p className="mt-1 line-clamp-2 break-words pl-[22px] text-ink">{h.subject ?? h.body}</p>
@@ -124,9 +126,15 @@ export function Activity() {
 
 function Metric({ label, value, tone }: { label: string; value: number | string; tone?: 'bad' }) {
   return (
-    <div>
-      <div className={`text-xl font-semibold ${tone === 'bad' ? 'text-danger' : 'text-ink'}`}>{value}</div>
-      <div className="mt-0.5 text-xs text-ink-muted">{label}</div>
+    <div className="min-w-0">
+      <div
+        className={`tabular font-display text-[20px] font-600 leading-none tracking-tight ${
+          tone === 'bad' ? 'text-danger' : 'text-ink'
+        }`}
+      >
+        {value}
+      </div>
+      <div className="eyebrow mt-2 truncate">{label}</div>
     </div>
   );
 }
@@ -134,7 +142,15 @@ function Metric({ label, value, tone }: { label: string; value: number | string;
 function StatusText({ status }: { status: string }) {
   const ok = ['sent', 'delivered', 'queued'].includes(status);
   const bad = ['failed', 'undelivered'].includes(status);
-  return <span className={`shrink-0 text-xs ${ok ? 'text-phos' : bad ? 'text-danger' : 'text-ink-faint'}`}>{status}</span>;
+  return (
+    <span
+      className={`shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] ${
+        ok ? 'text-phos' : bad ? 'text-danger' : 'text-ink-faint'
+      }`}
+    >
+      {status}
+    </span>
+  );
 }
 
 function csvCell(s: string): string {
