@@ -83,7 +83,7 @@ no real contact, number or credential appears in any of them.
 
 ### Overview
 
-<img src="images/crm-overview.png" alt="Overview: server status, today's counts, recent activity" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-overview.png" alt="Overview: server status, today's counts, recent activity" width="820">
 
 The landing page, and the one screen that answers "is anything wrong?"
 without a click.
@@ -102,7 +102,7 @@ appears above everything and links to the wizard.
 
 ### Inbox
 
-<img src="images/crm-inbox.png" alt="Inbox: received SMS and email with unread markers" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-inbox.png" alt="Inbox: received SMS and email with unread markers" width="820">
 
 Everything received, from both channels in one list. Inbound SMS arrives by
 Twilio webhook; inbound email by a persistent IMAP IDLE connection, so
@@ -114,7 +114,7 @@ inbox — this is a view onto the same table, not a copy.
 
 ### Contacts
 
-<img src="images/crm-contacts.png" alt="Contacts: names, numbers, addresses, favourites" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-contacts.png" alt="Contacts: names, numbers, addresses, favourites" width="820">
 
 The address book, and **the reason voice compose can resolve a name at all**
 — contact names are injected into the intent prompt as grounding, so "text
@@ -138,7 +138,7 @@ run. Stored and exposed via the API.
 
 ### Activity
 
-<img src="images/crm-activity.png" alt="Activity: roll-up statistics and a filterable message log" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-activity.png" alt="Activity: roll-up statistics and a filterable message log" width="820">
 
 The full audit log — every send and receive, with the tone used and the
 delivery status.
@@ -154,7 +154,7 @@ can move from `sent` to `delivered` after the fact.
 
 ### Integrations
 
-<img src="images/crm-integrations.png" alt="Integrations: per-provider credential cards with test buttons" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-integrations.png" alt="Integrations: per-provider credential cards with test buttons" width="820">
 
 Where credentials live. One card per provider — Twilio and the four model
 providers — plus the email account.
@@ -172,7 +172,7 @@ providers — plus the email account.
 
 ### Preferences
 
-<img src="images/crm-preferences.png" alt="Preferences: behaviour settings grouped into sections" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-preferences.png" alt="Preferences: behaviour settings grouped into sections" width="820">
 
 Behaviour, auto-saved as you change it. The settings that reach the glasses:
 
@@ -194,7 +194,7 @@ stored and editable, but not all are consumed by the glasses yet.
 
 ### Diagnostics
 
-<img src="images/crm-diagnostics.png" alt="Diagnostics: live checks against every dependency" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-diagnostics.png" alt="Diagnostics: live checks against every dependency" width="820">
 
 One button that exercises every dependency: database, Twilio, SMTP, IMAP and
 each configured model provider. Each check reports pass/fail with the
@@ -228,9 +228,9 @@ advancing, so you find out a credential is wrong at the step that owns it.
 ## Mobile
 
 <p>
-<img src="images/crm-mobile-overview.png" alt="Overview on a 390px phone viewport" width="270">
-<img src="images/crm-mobile-nav.png" alt="Navigation drawer open on mobile" width="270">
-<img src="images/crm-mobile-contacts.png" alt="Contacts on a phone viewport" width="270">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-mobile-overview.png" alt="Overview on a 390px phone viewport" width="270">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-mobile-nav.png" alt="Navigation drawer open on mobile" width="270">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-mobile-contacts.png" alt="Contacts on a phone viewport" width="270">
 </p>
 
 The dashboard is used primarily on a phone, because that is where the

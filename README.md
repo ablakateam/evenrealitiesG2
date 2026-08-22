@@ -6,7 +6,7 @@
 
 Speak a message. Check it. Send it. Without reaching for your phone.
 
-<img src="docs/images/hero.png" alt="VOX running on the Even Realities G2 heads-up display" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/hero.png" alt="VOX running on the Even Realities G2 heads-up display" width="820">
 
 [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOYMENT.md) ·
 [Configuration](docs/CONFIGURATION.md) · [API](docs/API.md) ·
@@ -51,7 +51,7 @@ email / model-provider credentials. **License:** MIT.
 
 ### 1 · The home screen
 
-<img src="docs/images/home.png" alt="The VOX home menu on the glasses: Speak a message, Inbox, Voice command, Style" width="720">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/home.png" alt="The VOX home menu on the glasses: Speak a message, Inbox, Voice command, Style" width="720">
 
 The G2 has one touch surface, so the entire app is three gestures — **scroll**
 to move the highlight, **tap** to activate, **double tap** to go back or, on
@@ -64,7 +64,7 @@ because cold start over a Bluetooth link has a latency budget.
 
 ### 2 · Speaking
 
-<img src="docs/images/speaking.png" alt="Live oscilloscope trace while recording on the glasses" width="720">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/speaking.png" alt="Live oscilloscope trace while recording on the glasses" width="720">
 
 The microphone opens on the **glasses** input source explicitly, and a live
 four-row oscilloscope shows it is hearing you — one mark per column at that
@@ -79,7 +79,7 @@ in the wrong language, so the server refuses below an amplitude floor.
 
 ### 3 · Reviewing before it sends
 
-<img src="docs/images/review.png" alt="The review screen showing recipient, channel, address and message body" width="720">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/review.png" alt="The review screen showing recipient, channel, address and message body" width="720">
 
 **Nothing sends unattended.** One header line answers the three things you
 must verify — who, how, and the real destination address — above the exact
@@ -90,7 +90,7 @@ a text or an email, and generated seven rewrites. All of it in one round trip.
 
 ### 4 · Changing the voice of the message
 
-<img src="docs/images/tone.png" alt="The tone submenu listing available message styles" width="720">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/tone.png" alt="The tone submenu listing available message styles" width="720">
 
 Seven styles: **Casual, Professional, Friendly, Formal, Sarcastic, Grammar**
 (your words, cleaned up) and **Original** (untouched). They were all generated
@@ -102,7 +102,7 @@ offers to switch channel.
 
 ### 5 · Your default style, shared with the phone
 
-<img src="docs/images/style.png" alt="The message style page listing all seven styles with descriptions" width="720">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/style.png" alt="The message style page listing all seven styles with descriptions" width="720">
 
 This sets the style **new** messages start in, saved to your server. Change it
 on the glasses and the dashboard shows it; change it on the dashboard and the
@@ -135,7 +135,7 @@ The dashboard — contacts, templates, integrations, history, diagnostics,
 preferences — is a React SPA served from the same domain, built mobile-first
 because that is where it is actually used.
 
-<img src="docs/images/crm-overview.png" alt="The VOX dashboard: server status, today's counts and recent activity" width="820">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/crm-overview.png" alt="The VOX dashboard: server status, today's counts and recent activity" width="820">
 
 <sub>Seeded with fictional data. Every tab is walked through in
 <a href="docs/DASHBOARD.md">docs/DASHBOARD.md</a>.</sub>
@@ -286,7 +286,7 @@ indication that the track is the cause.
 
 Install from the Even Realities phone app → Even Hub → VOX.
 
-<img src="docs/images/native-home.png" alt="VOX home screen at the G2's native 576×288 resolution" width="576">
+<img src="https://raw.githubusercontent.com/ablakateam/evenrealitiesG2/main/docs/images/native-home.png" alt="VOX home screen at the G2's native 576×288 resolution" width="576">
 
 <sub>The home screen at the panel's true 576×288. The display is a
 see-through waveguide — content is green light projected over what you are
