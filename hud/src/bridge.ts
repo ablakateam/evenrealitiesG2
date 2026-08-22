@@ -52,11 +52,43 @@ export function getBridge(): EvenAppBridge {
   return bridgeInstance;
 }
 
+let bridgeInit: Promise<EvenAppBridge> | null = null;
+
 /** Bootstrap the bridge once. Resolves when the host WebView is ready. */
 export async function initBridge(): Promise<EvenAppBridge> {
   if (bridgeInstance) return bridgeInstance;
-  bridgeInstance = await waitForEvenAppBridge();
-  return bridgeInstance;
+  // Memoize the in-flight promise, not just the result. Two callers racing at
+  // boot (the companion resolving its pairing, and main() booting the HUD)
+  // must await the SAME handshake rather than starting two.
+  bridgeInit ??= waitForEvenAppBridge().then((b) => {
+    bridgeInstance = b;
+    return b;
+  });
+  return bridgeInit;
+}
+
+/**
+ * Await the bridge, giving up after `timeoutMs` and resolving null instead of
+ * throwing.
+ *
+ * This exists because the companion needs to read KVS *before* the HUD boots,
+ * and KVS only works through the bridge. Calling `getBridge()` at that point
+ * threw "bridge not initialized", `kvGet` swallowed it, and every launch looked
+ * unpaired no matter what was stored — the pairing screen came back forever.
+ *
+ * The timeout keeps a plain browser (no host SDK, where the handshake never
+ * completes) from hanging the companion instead of rendering it.
+ */
+export async function whenBridgeReady(timeoutMs = 4000): Promise<EvenAppBridge | null> {
+  if (bridgeInstance) return bridgeInstance;
+  try {
+    return await Promise.race([
+      initBridge(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+  } catch {
+    return null;
+  }
 }
 
 /**

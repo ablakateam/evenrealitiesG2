@@ -42,6 +42,20 @@ reports this explicitly ("the credential did not persist on this device")
 because it reads the value back after writing it. Generate a fresh code and
 retry — the previous one is already burned.
 
+### The app asks for a pairing link every time it opens
+
+Fixed in v0.1.23. The phone companion read stored credentials before the SDK
+bridge finished its handshake, so the read threw, was swallowed as "nothing
+stored", and the pairing screen returned on every launch — even though the
+credential had saved correctly. If you see this, you are on v0.1.22 or earlier.
+
+### I cannot sign in to the dashboard without the long secret
+
+Set a password: sign in once with the secret, then Account -> Dashboard
+password. After that the sign-in page offers a password field. If you forget
+it, sign in with the secret again and set a new one — there is no reset email,
+because VOX holds no email address for you.
+
 ### "That pairing code is not valid, has expired, or was already used"
 
 One message covers all three deliberately, so the endpoint cannot be used to

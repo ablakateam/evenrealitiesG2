@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardBody, Input } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -16,20 +16,65 @@ export function Welcome() {
   const [status, setStatus] = useState<'idle' | 'checking' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
+  /**
+   * Which credential to ask for.
+   *
+   * The shared secret is 32 random characters and lives in the dashboard —
+   * which is the thing you need it to open. So if a password has been set, ask
+   * for that; the secret stays available as the fallback that always works.
+   */
+  const [mode, setMode] = useState<'password' | 'secret'>('secret');
+  const [passwordAvailable, setPasswordAvailable] = useState(false);
+
+  const base = (import.meta.env.VITE_API_BASE as string) ?? '';
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${base}/api/auth/login`);
+        if (!res.ok) return;
+        const body = (await res.json()) as { password_set: boolean };
+        setPasswordAvailable(body.password_set);
+        if (body.password_set) setMode('password');
+      } catch {
+        // Server unreachable or an older build without the endpoint — the
+        // secret field still works, so say nothing and leave it as-is.
+      }
+    })();
+  }, [base]);
+
   async function connect() {
-    const secret = value.trim();
-    if (!secret) return;
+    const entered = value.trim();
+    if (!entered) return;
     setStatus('checking');
     setErrorMsg('');
     try {
-      // Validate by hitting an auth-gated endpoint with the candidate secret.
-      const res = await fetch(`${(import.meta.env.VITE_API_BASE as string) ?? ''}/api/config`, {
-        headers: { Authorization: `Bearer ${secret}` },
-      });
-      if (!res.ok) {
+      let secret = entered;
+
+      if (mode === 'password') {
+        // Trade the password for the shared secret; everything downstream is
+        // unchanged, so this is a new door rather than a new access model.
+        const res = await fetch(`${base}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: entered }),
+        });
         const body = await res.json().catch(() => ({}));
-        throw new ApiError(res.status, body.error ?? 'auth_failed', body.message ?? 'Secret rejected');
+        if (!res.ok) {
+          throw new ApiError(res.status, body.error ?? 'auth_failed', body.message ?? 'Sign-in failed');
+        }
+        secret = body.secret as string;
+      } else {
+        // Validate by hitting an auth-gated endpoint with the candidate secret.
+        const res = await fetch(`${base}/api/config`, {
+          headers: { Authorization: `Bearer ${entered}` },
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new ApiError(res.status, body.error ?? 'auth_failed', body.message ?? 'Secret rejected');
+        }
       }
+
       setSecret(secret);
       navigate('/', { replace: true });
     } catch (err) {
@@ -52,10 +97,13 @@ export function Welcome() {
             Send SMS and email from your Even Realities G2, hands-free. Voice in, glance out.
           </p>
 
-          <label className="mb-1.5 block text-xs font-medium text-ink-muted">Pairing secret</label>
+          <label className="mb-1.5 block text-xs font-medium text-ink-muted">
+            {mode === 'password' ? 'Password' : 'VOX secret'}
+          </label>
           <Input
             type="password"
-            placeholder="paste your VOX secret"
+            autoComplete={mode === 'password' ? 'current-password' : 'off'}
+            placeholder={mode === 'password' ? 'your dashboard password' : 'paste your VOX secret'}
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
@@ -72,12 +120,27 @@ export function Welcome() {
             disabled={!value.trim() || status === 'checking'}
             onClick={connect}
           >
-            {status === 'checking' ? 'Connecting…' : 'Connect →'}
+            {status === 'checking' ? 'Signing in…' : 'Sign in →'}
           </Button>
 
+          <button
+            type="button"
+            className="mt-4 w-full text-xs text-ink-faint underline underline-offset-2 hover:text-ink"
+            onClick={() => {
+              setMode(mode === 'password' ? 'secret' : 'password');
+              setValue('');
+              setStatus('idle');
+            }}
+          >
+            {mode === 'password' ? 'Use the VOX secret instead' : 'Use a password instead'}
+          </button>
+
           <p className="mt-4 text-xs leading-relaxed text-ink-faint">
-            The secret was printed once when the VOX server was deployed. A guided
-            setup wizard replaces this in a later release.
+            {mode === 'password'
+              ? 'Set under Account → Dashboard password. Forgotten it? Sign in with the VOX secret and set a new one.'
+              : passwordAvailable
+                ? 'The secret was printed once when the VOX server was deployed. A password is quicker.'
+                : 'The secret was printed once when the VOX server was deployed. Set a password under Account so you do not need it again.'}
           </p>
         </CardBody>
       </Card>

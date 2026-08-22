@@ -292,6 +292,27 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    description: 'users.password_hash — memorable dashboard login alongside the shared secret',
+    up: (db) => {
+      db.exec(`
+        -- Optional. NULL means no password has been set and the shared secret
+        -- is the only way in. Argon2id, same parameters as the shared secret.
+        ALTER TABLE users ADD COLUMN password_hash TEXT;
+
+        -- The shared secret is stored only as a hash, so login cannot recover
+        -- it from the users table. When a password is set we capture the
+        -- secret the caller authenticated WITH and keep it encrypted here,
+        -- so a password login can hand it back. Same as auth_handoffs.
+        CREATE TABLE password_secrets (
+          user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          secret_encrypted TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    },
+  },
 ];
 
 function runMigrations(db: Database.Database): void {

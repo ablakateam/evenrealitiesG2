@@ -1,4 +1,4 @@
-import { getBridge } from './bridge.js';
+import { whenBridgeReady } from './bridge.js';
 import { EMBEDDED_CONFIG } from './embedded-config.js';
 
 /**
@@ -20,8 +20,14 @@ const KEYS = {
 } as const;
 
 export async function kvGet(key: string): Promise<string | null> {
+  // Wait for the bridge rather than assuming it exists. The companion reads
+  // KVS before main() boots the HUD, and reading too early used to throw,
+  // get swallowed here, and read as "nothing stored" — which made every
+  // relaunch look unpaired.
+  const bridge = await whenBridgeReady();
+  if (!bridge) return null;
   try {
-    const v = await getBridge().getLocalStorage(key);
+    const v = await bridge.getLocalStorage(key);
     return v && v.length > 0 ? v : null;
   } catch {
     return null;
@@ -29,7 +35,11 @@ export async function kvGet(key: string): Promise<string | null> {
 }
 
 export async function kvSet(key: string, value: string): Promise<void> {
-  await getBridge().setLocalStorage(key, value);
+  const bridge = await whenBridgeReady();
+  // Throw rather than no-op: callers persisting a credential must be able to
+  // tell that it did not stick. `claimPairing` also reads back to confirm.
+  if (!bridge) throw new Error('no SDK bridge — cannot persist to KVS');
+  await bridge.setLocalStorage(key, value);
 }
 
 export async function kvGetJson<T>(key: string): Promise<T | null> {

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { PairGlasses } from '@/components/PairGlasses';
+import { DashboardPassword } from '@/components/DashboardPassword';
 import { Card, CardBody, CardHeader, CardTitle, PageHeading, Button, Spinner, Modal, InlineNote } from '@/components/ui';
 import { apiGet, apiPost, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -76,6 +77,9 @@ export function Account() {
 
       {/* Glasses pairing — issues per-device credentials */}
       <PairGlasses />
+
+      {/* Memorable sign-in, so the 32-char secret isn't needed every time */}
+      <DashboardPassword />
 
       {/* Dashboard sign-in QR */}
       <Card className="mb-3">

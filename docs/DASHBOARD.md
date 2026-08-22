@@ -215,6 +215,10 @@ Pairing and access.
   a live countdown. Scanning it from a laptop signs that browser in once.
   It does **not** contain your passkey. This is for *browsers*; use *Pair your
   glasses* for the app.
+- **Dashboard password** — set one and sign in with something memorable
+  instead of pasting the 32-character secret. Optional; with none set the
+  secret remains the only way in. Rotating the secret keeps the password
+  working — it is re-linked automatically.
 - **Shared secret** — masked, revealable, rotatable. Rotating invalidates the
   old secret immediately, but **does not affect paired glasses** — device
   credentials are separate rows. To cut off an install, revoke it above.

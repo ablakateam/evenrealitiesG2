@@ -27,6 +27,10 @@ Generated from `server/src/routes/`.
 |---|---|---|
 | `GET /api/account` | Bearer | — |
 | `POST /api/account/rotate-secret` | Bearer | — |
+| `GET /api/auth/login` | **None** | — |
+| `POST /api/auth/login` | **None** | 10/h per IP |
+| `POST /api/account/password` | Bearer (user secret only) | — |
+| `DELETE /api/account/password` | Bearer | — |
 | `POST /api/auth/handoff` | Bearer | handoff 120/h |
 | `POST /api/pair/code` | Bearer (user secret only) | — |
 | `POST /api/pair/claim` | **None** | 20/h per IP |
@@ -172,7 +176,38 @@ request's `Authorization` header and stored AES-256-GCM encrypted on the row,
 so handoff keeps working after a secret rotation. The row is marked used in
 the same transaction as the read, so two racing exchanges cannot both win.
 
-### `POST /api/pair/code` → `POST /api/pair/claim`
+### `GET /api/auth/login` · `POST /api/auth/login`
+
+Password sign-in for the dashboard.
+
+The shared secret is 32 random characters that live *in* the dashboard — which
+is the thing you need them to open. A password breaks that circularity.
+
+```jsonc
+// GET  /api/auth/login          -> whether to show a password field
+{ "password_set": true }
+
+// POST /api/auth/login          (no auth - this IS the sign-in)
+{ "password": "..." }  ->  { "secret": "...", "user_id": 1 }
+```
+
+Login returns the **same shared secret** the dashboard already uses, so this is
+an additional door rather than a second access model - everything downstream is
+unchanged.
+
+- Argon2id, and a per-IP limit of 10/h that **fails closed** (tighter than
+  pairing's 20/h: a password is far more guessable than a random 32-char
+  secret).
+- The secret is stored only as a hash, so login cannot recover it from `users`.
+  `POST /api/account/password` captures the secret the caller authenticated
+  *with* and stores it AES-256-GCM encrypted in `password_secrets` - the same
+  pattern as `auth_handoffs`.
+- `POST /api/account/rotate-secret` re-encrypts that copy in the same
+  transaction, so **rotating does not break the password**. Without that, a
+  correct password would return a dead secret that fails later and confusingly.
+- Setting a password requires the user secret; device secrets get 403.
+
+### `POST /api/pair/code` -> `POST /api/pair/claim`
 
 How an app with no credential gets one. This is the only unauthenticated
 credential-issuing path in VOX, so the constraints are worth stating.
