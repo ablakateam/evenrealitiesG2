@@ -80,3 +80,8 @@ LESSONSLEARNED.md
 ISSUES.md
 RFP.md
 PHASES.md
+
+# Site-specific PII patterns for the pre-commit guard. Tracking this would
+# publish the exact values it exists to protect. Template is committed as
+# .githooks/pii-patterns.example.
+.githooks/pii-patterns

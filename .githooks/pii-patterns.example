@@ -1,0 +1,20 @@
+# Site-specific PII patterns for the pre-commit guard.
+#
+#   cp .githooks/pii-patterns.example .githooks/pii-patterns
+#
+# This file is a TEMPLATE and is tracked. The copy you create is gitignored,
+# because a guard that lists your real domain, IP, phone numbers and email
+# addresses is itself a published copy of all of them.
+#
+# One extended-regex per line. '#' starts a comment.
+
+# Your production host and its address
+# your-domain\.example
+# 203\.0\.113\.10
+
+# Email domains that should never appear in a commit
+# @your-domain\.example
+# @your-personal-domain\.example
+
+# Phone numbers, tolerant of separators
+# \b555[ .-]*0100[ .-]*0000\b
