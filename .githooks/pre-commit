@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#
+# VOX pre-commit PII / credential guard.
+#
+# Blocks commits whose staged content contains operational secrets or
+# personal data. Use placeholders (<YOUR_DOMAIN>, <VPS_IP>, ...) in docs and
+# examples, and environment variables in code.
+#
+# Enable once per clone:
+#     git config core.hooksPath .githooks
+#
+# ── Why site-specific patterns are NOT in this file ────────────────────────
+# They used to be, and that was a leak: a guard listing the exact domain,
+# IP, phone numbers and email addresses it defends is itself a published
+# copy of all of them. It also evaded its own audit — patterns were stored
+# escaped (`example\.com`), so a regex built from them did not match the
+# file that contained them, and a fixed-string search for the unescaped
+# value missed it too.
+#
+# Site-specific values now live in `.githooks/pii-patterns`, gitignored:
+#     cp .githooks/pii-patterns.example .githooks/pii-patterns
+#
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+LOCAL_PATTERNS="${REPO_ROOT}/.githooks/pii-patterns"
+
+# Generic patterns — safe to publish because they describe the SHAPE of a
+# secret, not any particular one.
+PATTERNS=(
+  'sk-[A-Za-z0-9_-]{20,}'                        # OpenAI / Anthropic style keys
+  'AC[0-9a-f]{32}'                               # Twilio account SID
+  'SK[0-9a-f]{32}'                               # Twilio API key SID
+  'AKIA[0-9A-Z]{16}'                             # AWS access key
+  'gh[pousr]_[A-Za-z0-9]{20,}'                   # GitHub tokens
+  'github_pat_[A-Za-z0-9_]{20,}'
+  'xox[baprs]-[A-Za-z0-9-]{10,}'                 # Slack
+  'AIza[0-9A-Za-z_-]{30,}'                       # Google API key
+  '-----BEGIN [A-Z ]*PRIVATE KEY-----'           # any private key
+  'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.'  # JWT
+  '/Users/[a-z]'                                 # local macOS home paths
+  '/home/[a-z]'                                  # local linux home paths
+)
+
+# Site-specific patterns, one extended-regex per line, '#' comments allowed.
+if [ -f "$LOCAL_PATTERNS" ]; then
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | sed 's/[[:space:]]*$//')"
+    [ -n "$line" ] && PATTERNS+=("$line")
+  done < "$LOCAL_PATTERNS"
+else
+  echo "⚠ .githooks/pii-patterns not found — only generic secret shapes are"
+  echo "  checked. Copy .githooks/pii-patterns.example and fill it in to also"
+  echo "  guard your own domain, IP, phone numbers and addresses."
+fi
+
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+[ -z "$staged" ] && exit 0
+
+violations=0
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    *.lock|*package-lock.json|*.png|*.jpg|*.jpeg|*.gif|*.ico|*.pdf|*.woff*) continue ;;
+  esac
+  [ -f "$file" ] || continue
+  for pat in "${PATTERNS[@]}"; do
+    # -e is required: a pattern may begin with '-' (the PEM header), which
+    # grep would otherwise parse as an option and refuse to run.
+    if git show ":$file" 2>/dev/null | grep -nEq -e "$pat"; then
+      echo "✗ PII guard: '$file' matches a blocked pattern"
+      violations=$((violations + 1))
+    fi
+  done
+done <<< "$staged"
+
+if [ "$violations" -gt 0 ]; then
+  echo ""
+  echo "Commit blocked — $violations match(es). Use placeholders or env vars."
+  echo "If this is genuinely a false positive: git commit --no-verify"
+  exit 1
+fi
+exit 0
