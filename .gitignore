@@ -85,3 +85,6 @@ PHASES.md
 # publish the exact values it exists to protect. Template is committed as
 # .githooks/pii-patterns.example.
 .githooks/pii-patterns
+
+# Playwright MCP scratch output (snapshots, console logs)
+.playwright-mcp/
