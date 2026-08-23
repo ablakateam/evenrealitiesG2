@@ -21,7 +21,7 @@ const MIN_LENGTH = 10;
 export function DashboardPassword() {
   const qc = useQueryClient();
   const [value, setValue] = useState('');
-  const [confirm, setConfirm] = useState('');
+  const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -32,9 +32,14 @@ export function DashboardPassword() {
   });
   const isSet = status.data?.password_set ?? false;
 
+  // One field, not two.
+  //
+  // The confirm field was worse than useless here: with a valid password typed
+  // and confirm still empty, the button was disabled and NOTHING on screen said
+  // why — the mismatch hint only rendered once confirm was non-empty. A reveal
+  // toggle catches typos without ever producing a dead button.
   const tooShort = value.length > 0 && value.length < MIN_LENGTH;
-  const mismatch = confirm.length > 0 && value !== confirm;
-  const canSave = value.length >= MIN_LENGTH && value === confirm && !busy;
+  const canSave = value.length >= MIN_LENGTH && !busy;
 
   const save = async () => {
     setBusy(true);
@@ -43,7 +48,7 @@ export function DashboardPassword() {
     try {
       await apiPost('/api/account/password', { password: value });
       setValue('');
-      setConfirm('');
+      setReveal(false);
       setSaved(true);
       await qc.invalidateQueries({ queryKey: ['password-status'] });
     } catch (e) {
@@ -79,11 +84,20 @@ export function DashboardPassword() {
             : 'Not set — signing in currently requires pasting the 32-character VOX secret. A password is easier, especially on a phone.'}
         </p>
 
-        <label className="mb-1.5 block text-xs font-medium text-ink-muted">
-          {isSet ? 'New password' : 'Password'}
-        </label>
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <label className="text-xs font-medium text-ink-muted">
+            {isSet ? 'New password' : 'Password'}
+          </label>
+          <button
+            type="button"
+            className="text-xs text-ink-faint underline underline-offset-2 hover:text-ink"
+            onClick={() => setReveal(!reveal)}
+          >
+            {reveal ? 'Hide' : 'Show'}
+          </button>
+        </div>
         <Input
-          type="password"
+          type={reveal ? 'text' : 'password'}
           autoComplete="new-password"
           placeholder={`at least ${MIN_LENGTH} characters`}
           value={value}
@@ -91,25 +105,19 @@ export function DashboardPassword() {
             setValue(e.target.value);
             setSaved(false);
           }}
-        />
-
-        <label className="mb-1.5 mt-3 block text-xs font-medium text-ink-muted">Confirm</label>
-        <Input
-          type="password"
-          autoComplete="new-password"
-          placeholder="type it again"
-          value={confirm}
-          onChange={(e) => {
-            setConfirm(e.target.value);
-            setSaved(false);
-          }}
           onKeyDown={(e) => e.key === 'Enter' && canSave && void save()}
         />
 
-        {tooShort && (
-          <p className="mt-2 text-xs text-ink-faint">{MIN_LENGTH - value.length} more characters.</p>
-        )}
-        {mismatch && <p className="mt-2 text-xs text-danger">Those do not match.</p>}
+        {/* The button's disabled state must ALWAYS be explained. */}
+        {value.length === 0 ? (
+          <p className="mt-2 text-xs text-ink-faint">
+            Pick something you can remember — at least {MIN_LENGTH} characters.
+          </p>
+        ) : tooShort ? (
+          <p className="mt-2 text-xs text-ink-faint">
+            {MIN_LENGTH - value.length} more character{MIN_LENGTH - value.length === 1 ? '' : 's'}.
+          </p>
+        ) : null}
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
         {saved && <p className="mt-2 text-xs text-phos">Saved.</p>}
 
