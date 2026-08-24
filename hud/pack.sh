@@ -32,6 +32,9 @@ else
   # is removed again on exit.
   unset VITE_VOX_SECRET VITE_VOX_SERVER
   printf 'VITE_VOX_SECRET=\nVITE_VOX_SERVER=\n' > .env.production.local
+  # The one origin this build may reach — the same value that goes into
+  # app.json's whitelist, baked in whole so no URL is assembled at runtime.
+  printf 'VITE_VOX_ALLOWED_ORIGIN=https://%s\n' "${VOX_DOMAIN}" >> .env.production.local
   trap 'rm -f "$(dirname "$0")/.env.production.local"' EXIT
 fi
 
@@ -56,6 +59,26 @@ if [ "${VOX_EMBED_SECRET:-0}" != "1" ]; then
   [ "$leaked" -eq 1 ] && exit 1
   echo "✓ verified: no credential in dist/"
 fi
+
+# Every URL literal in the bundle must be covered by app.json's whitelist.
+# Store review scans for exactly this and rejects the build otherwise; a
+# template like `https://${host}` survives as `https://${t}` and is flagged,
+# fairly, because nothing static can tell where it points.
+unlisted=0
+while IFS= read -r url; do
+  [ -z "$url" ] && continue
+  case "$url" in
+    "https://${VOX_DOMAIN}"*) ;;
+    *) echo "✗ bundle contains a URL not covered by the whitelist: $url" >&2; unlisted=1 ;;
+  esac
+done <<EOF
+$(grep -ohE 'https?://[^"'"'"'\`,)\\ ]{0,80}' dist/assets/*.js 2>/dev/null | sort -u)
+EOF
+if [ "$unlisted" -eq 1 ]; then
+  echo "  Fix the literal, or add the origin to app.json's network whitelist." >&2
+  exit 1
+fi
+echo "✓ verified: every URL in dist/ is whitelisted" 
 
 sed "s/YOUR_DOMAIN/${VOX_DOMAIN}/g" app.json > app.build.json
 # Prefer the user's npm-global bin so a non-login shell (CI, IDE) still

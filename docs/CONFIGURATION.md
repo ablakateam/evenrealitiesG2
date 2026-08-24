@@ -73,6 +73,7 @@ strings inside the packed `.ehpk`. See [SECURITY.md](SECURITY.md).
 | `VOX_DOMAIN` | Yes | Bare hostname. `pack.sh` substitutes it into `app.json`'s network whitelist — without it the glasses cannot reach the server at all. |
 | `VITE_VOX_SERVER` | No | Dev convenience only. `pack.sh` clears it so the packed bundle carries no address; `npm run dev` still uses it. |
 | `VITE_VOX_SECRET` | No | Dev convenience only. `pack.sh` clears it **and refuses to pack if it survives into `dist/`**. Production installs get a credential by pairing. |
+| `VITE_VOX_ALLOWED_ORIGIN` | Set by `pack.sh` | The one origin the build may reach, derived from `VOX_DOMAIN`. Baked in as a complete literal so no URL is assembled at runtime — store review rejects a bundle containing URL strings it cannot match to the whitelist, and `https://${host}` minifies to `https://${t}`. |
 | `VOX_SUPPORT_EMAIL` | No | Substituted into the hosted legal pages by `web/deploy.sh` |
 
 Changing any of these requires `bash pack.sh` and a re-upload.

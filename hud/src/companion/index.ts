@@ -17,7 +17,7 @@
 
 import { EMBEDDED_CONFIG } from '../embedded-config.js';
 import { getPairing, type Pairing } from '../kvs.js';
-import { parsePairingLink, claimPairing, PairingError } from '../pairing.js';
+import { parsePairingLink, claimPairing, PairingError, isForeignOrigin } from '../pairing.js';
 
 /** Origin of the paired server. Set once renderCompanion resolves a pairing;
  *  the paint* helpers read it to build dashboard links without taking it as
@@ -904,18 +904,22 @@ function pairingScreen(onPaired: () => void): HTMLElement {
       style: `margin-top: 10px; opacity:.7; font-size: 15px; line-height: 1.5;`,
       text:
         'VOX runs on a server you host, so nothing you send passes through anyone ' +
-        "else's infrastructure. Open your VOX dashboard, generate a pairing link, " +
-        'and paste it here.',
+        "else's infrastructure. Open your VOX dashboard, create a pairing code, " +
+        'and enter it here.',
     }),
   );
 
   const input = document.createElement('input');
-  input.type = 'url';
-  input.inputMode = 'url';
+  input.type = 'text';
+  input.inputMode = 'text';
+  input.autocapitalize = 'characters';
   input.autocapitalize = 'off';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.placeholder = 'https://your-server/p/ABCD-1234';
+  // The code alone, not a URL. This build can only reach one server, so the
+  // origin adds nothing to type — and a URL-shaped literal here is exactly
+  // what store review flags as an unwhitelisted URL in the bundle.
+  input.placeholder = 'ABCD-1234';
   input.style.cssText = `
     margin-top: 22px; width: 100%; box-sizing: border-box;
     padding: 14px 14px; border-radius: 10px;
@@ -959,11 +963,16 @@ function pairingScreen(onPaired: () => void): HTMLElement {
   const submit = async (): Promise<void> => {
     const parsed = parsePairingLink(input.value);
     if (!parsed) {
-      setStatus('That does not look like a pairing link. It ends in /p/ and an 8-character code.', 'error');
+      setStatus(
+        isForeignOrigin(input.value)
+          ? 'That link points at a different server. This build can only reach the one it was packed for.'
+          : 'That is not a pairing code. Codes are 8 characters, like ABCD-1234.',
+        'error',
+      );
       return;
     }
     button.disabled = true;
-    setStatus(`Connecting to ${parsed.server.replace(/^https?:\/\//, '')}…`, 'busy');
+    setStatus('Connecting…', 'busy');
     try {
       await claimPairing(parsed.server, parsed.code);
       setStatus('Paired. Loading your dashboard…', 'ok');

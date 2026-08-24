@@ -66,6 +66,10 @@ The `.ehpk` contains no server address and no secret. `pack.sh` clears
 shell variable is not sufficient on its own (Vite reads `hud/.env` directly, so
 the value comes back unless a higher-precedence override clears it).
 
+`pack.sh` additionally fails the build if `dist/` contains any URL literal not
+covered by `app.json`'s network whitelist. Store review performs the same check
+and rejects the package otherwise.
+
 This matters because an `.ehpk` offers no protection of its own. The container
 is zstd-compressed, not encrypted — there is no cipher anywhere in the packer —
 so anything embedded in the bundle is readable by anyone holding the file.

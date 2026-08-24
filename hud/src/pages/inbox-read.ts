@@ -37,7 +37,11 @@ export function makeInboxReadPage(item: InboxItem): Page {
         void apiPost(`/api/inbox/${item.id}/read`).catch(() => {});
       }
 
-      const title = clip(`${item.channel.toUpperCase()}  ${item.from_address}`, 46);
+      // Name when we know the sender, address otherwise — matching the list.
+      // The detail endpoint has always returned contact_name; this page just
+      // wasn't using it, so a known contact read as a raw number here.
+      const who = item.contact_name?.trim() || item.from_address;
+      const title = clip(`${item.channel.toUpperCase()}  ${who}`, 46);
       // Reply is the FIRST row, not a trailing one: it is the only action on
       // this page and the wearer should not have to scroll a long body to
       // find it.

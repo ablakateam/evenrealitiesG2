@@ -24,23 +24,28 @@ inboxRouter.get('/api/inbox', requireAuth, (req, res) => {
   const userId = req.user!.id;
   const db = getDb();
 
-  const where: string[] = ['user_id = @user_id'];
+  const where: string[] = ['i.user_id = @user_id'];
   const params: Record<string, unknown> = { user_id: userId, limit: q.data.limit };
-  if (q.data.unread === 'true') where.push('read_at IS NULL');
-  if (q.data.unread === 'false') where.push('read_at IS NOT NULL');
+  if (q.data.unread === 'true') where.push('i.read_at IS NULL');
+  if (q.data.unread === 'false') where.push('i.read_at IS NOT NULL');
   if (q.data.channel) {
-    where.push('channel = @channel');
+    where.push('i.channel = @channel');
     params.channel = q.data.channel;
   }
   if (q.data.before_id) {
-    where.push('id < @before_id');
+    where.push('i.id < @before_id');
     params.before_id = q.data.before_id;
   }
   const rows = db
     .prepare(
-      `SELECT id, channel, contact_id, from_address, subject, body, received_at, read_at
-       FROM inbox WHERE ${where.join(' AND ')}
-       ORDER BY id DESC LIMIT @limit`,
+      // Join contacts so the list can show a name. The detail endpoint below
+      // already did, so a message read as "+15555550123" in the list and
+      // "Alex Chen" once opened — and the list is what you look at most.
+      `SELECT i.id, i.channel, i.contact_id, i.from_address, i.subject, i.body,
+              i.received_at, i.read_at, c.name AS contact_name
+       FROM inbox i LEFT JOIN contacts c ON c.id = i.contact_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY i.id DESC LIMIT @limit`,
     )
     .all(params);
   const unreadCount = (db

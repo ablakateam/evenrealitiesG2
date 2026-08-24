@@ -14,9 +14,25 @@
 export interface EmbeddedConfig {
   server: string | null;
   secret: string | null;
+  /**
+   * The ONE origin this build is allowed to reach, as a complete literal
+   * (e.g. "https://vox.example.com").
+   *
+   * Not a secret — it is the same value that goes into `app.json`'s network
+   * whitelist, which is published in the package anyway. It is baked in as a
+   * whole string rather than assembled at runtime for two reasons: the Even
+   * Realities App blocks any request to a domain the manifest does not list
+   * (wildcards are unsupported), and store review statically scans the bundle
+   * for URL literals it cannot match against the whitelist. A template like
+   * `https://${host}` minifies to `https://${t}` and is flagged as an
+   * uncoverable URL — correctly, since a scanner cannot know what it resolves
+   * to.
+   */
+  allowedOrigin: string | null;
 }
 
 export const EMBEDDED_CONFIG: EmbeddedConfig = {
   server: import.meta.env.VITE_VOX_SERVER ?? null,
   secret: import.meta.env.VITE_VOX_SECRET ?? null,
+  allowedOrigin: import.meta.env.VITE_VOX_ALLOWED_ORIGIN ?? null,
 };

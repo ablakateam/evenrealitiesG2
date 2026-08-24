@@ -1,4 +1,5 @@
 import { setPairing, getPairing, type Pairing } from './kvs.js';
+import { EMBEDDED_CONFIG } from './embedded-config.js';
 
 /**
  * Client half of the device-pairing exchange.
@@ -24,27 +25,45 @@ export interface ParsedPairingLink {
 const CODE_PATTERN = /^[0-9A-Z]{8}$/;
 
 /**
- * Accept anything a person could plausibly hand us: the full link, a link
- * without a scheme, or a bare `host CODE` pair. Returns null when the input
- * cannot be read as both a server and a code — the caller shows the format
- * hint rather than guessing.
+ * Resolve a pairing input to the server and code to use.
+ *
+ * A build can only ever reach ONE origin: the Even Realities App blocks any
+ * request to a domain `app.json` does not whitelist, and wildcards are not
+ * supported. So the server is never taken from user input — it comes from the
+ * build, and anything typed is checked against it.
+ *
+ * That makes the code alone sufficient, which is also better to type. A full
+ * link still works, because a QR naturally carries one.
+ *
+ * Note the deliberate absence of any `https://${...}` template. Such a string
+ * survives minification as `https://${t}`, which store review flags as a URL
+ * not covered by the whitelist — a fair reading, since nothing static can tell
+ * where it points.
  */
 export function parsePairingLink(raw: string): ParsedPairingLink | null {
   const input = raw.trim();
   if (!input) return null;
 
-  // Bare `example.com ABCD-1234` / `example.com/ABCD1234` — no scheme.
-  const withScheme = /^https?:\/\//i.test(input) ? input : `https://${input}`;
+  const origin = EMBEDDED_CONFIG.allowedOrigin;
+  if (!origin) return null;
 
+  // Just the code — the common case now that the server is fixed.
+  const bare = normalizeCode(input);
+  if (CODE_PATTERN.test(bare)) return { server: origin, code: bare };
+
+  // Otherwise a link. Resolving against `origin` as the base means a
+  // scheme-less or path-only paste still parses, with no scheme literal here.
   let url: URL;
   try {
-    url = new URL(withScheme);
+    url = new URL(input, origin);
   } catch {
     return null;
   }
 
-  // The code is the last non-empty path segment. Accepting any segment (not
-  // just `/p/`) means a link copied with extra path prefix still works.
+  // Reject a link pointing somewhere this build cannot reach, rather than
+  // letting it fail later as an opaque network error.
+  if (url.origin !== origin) return null;
+
   const segments = url.pathname.split('/').filter(Boolean);
   const last = segments[segments.length - 1];
   if (!last) return null;
@@ -52,7 +71,21 @@ export function parsePairingLink(raw: string): ParsedPairingLink | null {
   const code = normalizeCode(last);
   if (!CODE_PATTERN.test(code)) return null;
 
-  return { server: url.origin, code };
+  return { server: origin, code };
+}
+
+/** True when the input looks like a link to some OTHER server, so the caller
+ *  can say why it was refused instead of showing a generic format hint. */
+export function isForeignOrigin(raw: string): boolean {
+  const origin = EMBEDDED_CONFIG.allowedOrigin;
+  if (!origin) return false;
+  const input = raw.trim();
+  if (!/^[a-z]+:\/\//i.test(input)) return false;
+  try {
+    return new URL(input).origin !== origin;
+  } catch {
+    return false;
+  }
 }
 
 /**

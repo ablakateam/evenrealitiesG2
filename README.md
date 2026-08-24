@@ -314,16 +314,20 @@ The app has no idea where your server is until you tell it. Pairing is what
 delivers both halves — the address and a credential.
 
 1. Open your dashboard → **Account** → **Pair your glasses** → *Create pairing
-   link*. You get a QR code and a link like
-   `https://vox.example.com/p/ABCD2345`.
+   link*. You get a code like `ABCD-2345`, plus a QR of the full link.
 2. Open VOX on your phone. An unpaired install shows the **Connect VOX** screen.
-3. Paste the link and tap **Pair this device**.
+3. Enter the code and tap **Pair this device**.
 4. On the glasses, tap once. The *not paired yet* card re-checks and drops you
    on the home screen.
 
-The link carries the origin *and* the code, which is why one string is enough:
-the origin says which server, the code says what to redeem there. Codes last
-ten minutes and are single use.
+The code alone is enough because a build can only ever reach one server — the
+one in its network whitelist. That is a platform constraint, not a choice: the
+Even Realities App blocks requests to any domain `app.json` does not list, and
+wildcards are unsupported. Pasting the full link works too, and a link pointing
+at a different server is rejected with a message saying so rather than failing
+as an opaque network error.
+
+Codes last ten minutes and are single use.
 
 What the app stores is a **per-device credential**, not your account's shared
 secret. Each paired install is listed under Account and can be revoked on its

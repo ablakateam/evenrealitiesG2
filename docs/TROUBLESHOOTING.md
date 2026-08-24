@@ -62,6 +62,13 @@ One message covers all three deliberately, so the endpoint cannot be used to
 discover which codes exist. In practice it is almost always the ten-minute TTL
 or a code already redeemed. Generate a new one.
 
+### "That link points at a different server"
+
+A build can only reach the domain it was packed for — `app.json`'s network
+whitelist takes one origin and wildcards are unsupported, so the Even Realities
+App blocks anything else before the request leaves the WebView. Pair using a
+code from *that* server, or repack with `VOX_DOMAIN` set to the one you want.
+
 ### "Too many pairing attempts"
 
 Twenty claim attempts per hour per IP. Wait for the hour to roll over. This

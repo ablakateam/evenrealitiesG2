@@ -33,6 +33,8 @@ export interface InboxItem {
   channel: 'sms' | 'email';
   contact_id: number | null;
   from_address: string;
+  /** Contact name when the sender is known. Absent for unknown senders. */
+  contact_name?: string | null;
   subject: string | null;
   body: string;
   received_at: string;
@@ -129,9 +131,14 @@ async function render(ctx: PageContext, state: State, unread: number, rows: stri
 
 function formatRow(item: InboxItem): string {
   // 32-char budget: sender(22) + when(4) + space + unread(1) = 28 visible.
+  // A known sender reads as a name; the raw address is the fallback. The list
+  // endpoint returns contact_name, so this matches what opening the message
+  // has always shown.
+  //
   // Full from_address scans better than the local part alone — a bare
-  // "support" is useless, "support@example.com" is meaningful.
-  const sender = clip(item.from_address, 22);
+  // "alex" could be any of several addresses, and on a 22-char budget the
+  // domain is what disambiguates.
+  const sender = clip(item.contact_name?.trim() || item.from_address, 22);
   const unread = item.read_at ? ' ' : '*';
   const when = formatWhen(item.received_at);
   return `${sender.padEnd(22)}${when} ${unread}`;
