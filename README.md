@@ -194,6 +194,15 @@ Complete, assuming a clean server. The exhaustive version — firewall rules,
 SSH hardening, backups, update procedure — is in
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
+**Not using a VPS?** VOX is a Node 20 + SQLite process, so a NAS or homelab box
+works just as well. There is a `Dockerfile` and `docker-compose.yml` at the repo
+root — the image builds the native modules for you, which is the usual snag on
+Unraid or Synology — and `tailscale serve` gives you HTTPS with a real
+certificate instead of Nginx and certbot. See
+[Alternative deployments](docs/DEPLOYMENT.md#alternative-deployments--nas-homelab-tailscale).
+The one catch is inbound SMS, which needs a publicly reachable webhook URL
+(`tailscale funnel`); email works fine on a private tailnet.
+
 ### What you need first
 
 | Requirement | Notes |

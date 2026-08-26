@@ -12,10 +12,10 @@ async function main(): Promise<void> {
   await ensureUserExists();
 
   const app = buildApp();
-  const server = app.listen(env.PORT, '127.0.0.1', () => {
+  const server = app.listen(env.PORT, env.HOST, () => {
     log.info(
-      { port: env.PORT, env: env.NODE_ENV, db: env.DB_PATH },
-      `vox-server listening on 127.0.0.1:${env.PORT}`,
+      { host: env.HOST, port: env.PORT, env: env.NODE_ENV, db: env.DB_PATH },
+      `vox-server listening on ${env.HOST}:${env.PORT}`,
     );
   });
 

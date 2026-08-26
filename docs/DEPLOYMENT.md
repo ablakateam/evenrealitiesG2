@@ -246,6 +246,79 @@ revocable on its own from the same screen.
 
 ---
 
+## Alternative deployments — NAS, homelab, Tailscale
+
+Nothing above is VPS-specific. VOX is a Node 20 + SQLite process; the Ubuntu
+steps are one way to host it, not a requirement. This section covers the common
+alternative: a NAS (Unraid, Synology, TrueNAS) reached over Tailscale.
+
+### Run it in a container
+
+The usual stumbling block on a NAS is that `argon2` and `better-sqlite3` are
+native modules — they compile against the local Node ABI, so a bare install
+needs python3 and a C++ toolchain. The provided image builds them in one stage
+and copies the result into a slim runtime, so the host needs neither.
+
+```bash
+cp server/.env.example .env      # fill it in — see docs/CONFIGURATION.md
+docker compose up -d
+docker compose logs -f vox-server
+```
+
+The database lives on the `vox-data` volume, so it survives image rebuilds.
+The API is published on `127.0.0.1:3000` only; something in front terminates
+TLS.
+
+Note `HOST=0.0.0.0` in `docker-compose.yml`. The application binds `127.0.0.1`
+by default — correct on the VPS, where Nginx should be the only caller — but
+loopback inside a container is not reachable from outside it.
+
+### TLS without Nginx or certbot
+
+`tailscale serve` terminates TLS with a real certificate on your `*.ts.net`
+name, which replaces sections 5 and part of 1 entirely:
+
+```bash
+tailscale serve --bg --https=443 http://127.0.0.1:3000
+tailscale serve status
+```
+
+Your `VOX_DOMAIN` is then the `ts.net` hostname. Any device on your tailnet —
+including the phone running the Even Realities app — can reach it.
+
+### Inbound SMS needs to be publicly reachable
+
+This is the one thing a private tailnet cannot do. Twilio delivers inbound
+messages by POSTing a webhook to you, and it is not on your tailnet:
+
+```bash
+tailscale funnel --bg 443        # exposes the same service publicly over HTTPS
+```
+
+Set `TWILIO_WEBHOOK_BASE_URL` to that public URL and follow section 8 as
+written. Webhook signatures are verified, so the exposed surface is the webhook
+route plus the pairing claim endpoint, both of which are designed for it.
+
+**If you only use email, skip Funnel.** SMTP and IMAP are outbound connections
+from your box, so they work on a private tailnet with nothing exposed at all.
+
+### You still build your own `.ehpk`
+
+Each build is pinned to one domain — `app.json`'s network whitelist takes a
+single origin, wildcards are unsupported, and the Even Realities App blocks
+anything else before the request leaves the WebView. So set `VOX_DOMAIN` to
+your `ts.net` hostname and pack it yourself (section 9). The phone must be on
+the tailnet for the glasses app to reach the server.
+
+### Other hosts
+
+The same shape works anywhere that runs Node 20 or Docker — a Raspberry Pi, a
+spare mini-PC, a home server behind Cloudflare Tunnel. The only hard
+requirements are HTTPS with a valid certificate (the WebView will not accept
+otherwise), and a publicly reachable webhook URL if you want inbound SMS.
+
+---
+
 ## Operating it
 
 ### Updating

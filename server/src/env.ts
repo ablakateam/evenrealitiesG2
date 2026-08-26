@@ -6,6 +6,11 @@ dotenv.config();
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().nonnegative().default(3000),
+  // Interface to bind. Loopback by default: on the documented VPS setup Nginx
+  // is the only thing that should reach Node, and binding 0.0.0.0 there would
+  // expose the API past the reverse proxy. Containers must override it to
+  // 0.0.0.0, since loopback inside a container is not reachable from outside.
+  HOST: z.string().min(1).default('127.0.0.1'),
   DB_PATH: z.string().min(1).default('./data/vox.db'),
   MASTER_KEY: z
     .string()

@@ -46,6 +46,7 @@ deploy and prints the bootstrap secret once.
 | Variable | Default | Notes |
 |---|---|---|
 | `NODE_ENV` | `development` | |
+| `HOST` | No | Interface to bind. Defaults to `127.0.0.1`, which is what you want behind Nginx — binding wider would expose the API past the reverse proxy. Containers must set `0.0.0.0`, since loopback inside a container is unreachable from outside. |
 | `PORT` | `3000` | Binds `127.0.0.1` only |
 | `DB_PATH` | `./data/vox.db` | Created with its parent on first boot |
 | `LOG_LEVEL` | `info` | `fatal…trace` |

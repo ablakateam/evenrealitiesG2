@@ -1,0 +1,63 @@
+# VOX server — NAS / homelab deployment.
+#
+#   cp server/.env.example .env     # fill it in, then:
+#   docker compose up -d
+#
+# The API is deliberately published on 127.0.0.1 only. Put something in front
+# that terminates TLS — `tailscale serve` is the least work on a NAS, and gives
+# you a real certificate on a *.ts.net name without Nginx or certbot:
+#
+#   tailscale serve --bg --https=443 http://127.0.0.1:3000
+#
+# Inbound SMS additionally needs to be reachable from Twilio, which a tailnet
+# address is not. `tailscale funnel --bg 443` exposes it publicly over HTTPS.
+# Skip that if you only use email — SMTP and IMAP are outbound connections from
+# this container, so they work on a private tailnet with nothing exposed.
+#
+# See docs/DEPLOYMENT.md → Alternative deployments for the full walkthrough.
+
+services:
+  vox-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vox-server:latest
+    container_name: vox-server
+    restart: unless-stopped
+
+    # Loopback only. Change to "3000:3000" ONLY if something else on your
+    # network must reach it directly — the API is protected by a shared secret,
+    # not by network position, but there is no reason to widen it by default.
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    # Every value lives in .env — never inline a credential here, this file is
+    # committed. See server/.env.example for the full list.
+    env_file:
+      - .env
+
+    environment:
+      # Overrides that are properties of running in a container rather than
+      # deployment choices, so they do not belong in .env.
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      DB_PATH: /data/vox.db
+
+    volumes:
+      # SQLite (WAL mode) on a named volume, so it survives image rebuilds.
+      - vox-data:/data
+
+    # Small app, but SQLite plus IMAP workers should not be able to eat the NAS.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  vox-data:
